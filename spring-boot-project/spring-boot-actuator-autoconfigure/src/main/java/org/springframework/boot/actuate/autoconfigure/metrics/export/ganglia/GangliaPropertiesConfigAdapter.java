@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
 import info.ganglia.gmetric4j.gmetric.GMetric;
 import io.micrometer.ganglia.GangliaConfig;
 
-import org.springframework.boot.actuate.autoconfigure.metrics.export.PropertiesConfigAdapter;
+import org.springframework.boot.actuate.autoconfigure.metrics.export.properties.PropertiesConfigAdapter;
 
 /**
  * Adapter to convert {@link GangliaProperties} to a {@link GangliaConfig}.
@@ -30,8 +30,7 @@ import org.springframework.boot.actuate.autoconfigure.metrics.export.PropertiesC
  * @author Jon Schneider
  * @author Phillip Webb
  */
-class GangliaPropertiesConfigAdapter
-		extends PropertiesConfigAdapter<GangliaProperties>
+class GangliaPropertiesConfigAdapter extends PropertiesConfigAdapter<GangliaProperties>
 		implements GangliaConfig {
 
 	GangliaPropertiesConfigAdapter(GangliaProperties properties) {
@@ -45,7 +44,7 @@ class GangliaPropertiesConfigAdapter
 
 	@Override
 	public boolean enabled() {
-		return get(GangliaProperties::getEnabled, GangliaConfig.super::enabled);
+		return get(GangliaProperties::isEnabled, GangliaConfig.super::enabled);
 	}
 
 	@Override

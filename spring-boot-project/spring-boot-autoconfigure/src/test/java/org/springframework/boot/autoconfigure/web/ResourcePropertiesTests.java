@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,14 +74,14 @@ public class ResourcePropertiesTests {
 
 	@Test
 	public void emptyCacheControl() {
-		CacheControl cacheControl = this.properties.getCache().getControl()
+		CacheControl cacheControl = this.properties.getCache().getCachecontrol()
 				.toHttpCacheControl();
 		assertThat(cacheControl.getHeaderValue()).isNull();
 	}
 
 	@Test
 	public void cacheControlAllPropertiesSet() {
-		Cache.Control properties = this.properties.getCache().getControl();
+		Cache.Cachecontrol properties = this.properties.getCache().getCachecontrol();
 		properties.setMaxAge(Duration.ofSeconds(4));
 		properties.setCachePrivate(true);
 		properties.setCachePublic(true);
@@ -99,7 +99,7 @@ public class ResourcePropertiesTests {
 
 	@Test
 	public void invalidCacheControlCombination() {
-		Cache.Control properties = this.properties.getCache().getControl();
+		Cache.Cachecontrol properties = this.properties.getCache().getCachecontrol();
 		properties.setMaxAge(Duration.ofSeconds(4));
 		properties.setNoStore(true);
 		CacheControl cacheControl = properties.toHttpCacheControl();

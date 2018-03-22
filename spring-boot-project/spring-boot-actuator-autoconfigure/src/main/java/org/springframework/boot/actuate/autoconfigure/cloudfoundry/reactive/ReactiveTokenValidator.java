@@ -25,6 +25,7 @@ import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 
 import reactor.core.publisher.Mono;
@@ -43,7 +44,7 @@ class ReactiveTokenValidator {
 
 	private final ReactiveCloudFoundrySecurityService securityService;
 
-	private Map<String, String> cachedTokenKeys = new ConcurrentHashMap<>();
+	private volatile ConcurrentMap<String, String> cachedTokenKeys = new ConcurrentHashMap<>();
 
 	ReactiveTokenValidator(ReactiveCloudFoundrySecurityService securityService) {
 		this.securityService = securityService;
@@ -70,22 +71,28 @@ class ReactiveTokenValidator {
 	}
 
 	private Mono<Void> validateKeyIdAndSignature(Token token) {
-		String keyId = token.getKeyId();
-		return Mono.just(this.cachedTokenKeys)
-				.filter((tokenKeys) -> tokenKeys.containsKey(keyId))
-				.switchIfEmpty(this.securityService.fetchTokenKeys()
-						.doOnSuccess(fetchedTokenKeys -> {
-							this.cachedTokenKeys.clear();
-							this.cachedTokenKeys.putAll(fetchedTokenKeys);
-						})
-						.filter((tokenKeys) -> tokenKeys.containsKey(keyId))
-						.switchIfEmpty((Mono.error(
-								new CloudFoundryAuthorizationException(Reason.INVALID_KEY_ID,
-										"Key Id present in token header does not match")))))
-				.filter((tokenKeys) -> hasValidSignature(token, tokenKeys.get(keyId)))
+		return getTokenKey(token).filter((tokenKey) -> hasValidSignature(token, tokenKey))
 				.switchIfEmpty(Mono.error(new CloudFoundryAuthorizationException(
 						Reason.INVALID_SIGNATURE, "RSA Signature did not match content")))
 				.then();
+	}
+
+	private Mono<String> getTokenKey(Token token) {
+		String keyId = token.getKeyId();
+		String cached = this.cachedTokenKeys.get(keyId);
+		if (cached != null) {
+			return Mono.just(cached);
+		}
+		return this.securityService.fetchTokenKeys().doOnSuccess(this::cacheTokenKeys)
+				.filter((tokenKeys) -> tokenKeys.containsKey(keyId))
+				.map((tokenKeys) -> tokenKeys.get(keyId))
+				.switchIfEmpty(Mono.error(
+						new CloudFoundryAuthorizationException(Reason.INVALID_KEY_ID,
+								"Key Id present in token header does not match")));
+	}
+
+	private void cacheTokenKeys(Map<String, String> tokenKeys) {
+		this.cachedTokenKeys = new ConcurrentHashMap<>(tokenKeys);
 	}
 
 	private boolean hasValidSignature(Token token, String key) {

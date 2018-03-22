@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ public class WebTestClientAutoConfigurationTests {
 	}
 
 	@Test
-	public void shouldCustomizeClientCodecs() throws Exception {
+	public void shouldCustomizeClientCodecs() {
 		load(CodecConfiguration.class);
 		WebTestClient webTestClient = this.context.getBean(WebTestClient.class);
 		CodecCustomizer codecCustomizer = this.context.getBean(CodecCustomizer.class);
@@ -66,7 +66,7 @@ public class WebTestClientAutoConfigurationTests {
 	}
 
 	@Test
-	public void shouldCustomizeTimeout() throws Exception {
+	public void shouldCustomizeTimeout() {
 		PropertySource<?> propertySource = new MapPropertySource("test", Collections
 				.singletonMap("spring.test.webtestclient.timeout", (Object) "PT15M"));
 		load(propertySource, BaseConfiguration.class);

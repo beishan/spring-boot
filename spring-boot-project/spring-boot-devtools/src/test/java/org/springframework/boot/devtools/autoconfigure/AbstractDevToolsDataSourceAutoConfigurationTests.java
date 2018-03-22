@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,8 +39,8 @@ import org.springframework.context.annotation.Configuration;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
@@ -56,8 +56,8 @@ public abstract class AbstractDevToolsDataSourceAutoConfigurationTests {
 				DataSourcePropertiesConfiguration.class,
 				SingleDataSourceConfiguration.class);
 		DataSource dataSource = context.getBean(DataSource.class);
-		Statement statement = configureDataSourceBehaviour(dataSource);
-		verify(statement, times(0)).execute("SHUTDOWN");
+		Statement statement = configureDataSourceBehavior(dataSource);
+		verify(statement, never()).execute("SHUTDOWN");
 	}
 
 	@Test
@@ -68,8 +68,8 @@ public abstract class AbstractDevToolsDataSourceAutoConfigurationTests {
 		Collection<DataSource> dataSources = context.getBeansOfType(DataSource.class)
 				.values();
 		for (DataSource dataSource : dataSources) {
-			Statement statement = configureDataSourceBehaviour(dataSource);
-			verify(statement, times(0)).execute("SHUTDOWN");
+			Statement statement = configureDataSourceBehavior(dataSource);
+			verify(statement, never()).execute("SHUTDOWN");
 		}
 	}
 
@@ -86,7 +86,7 @@ public abstract class AbstractDevToolsDataSourceAutoConfigurationTests {
 		context.close();
 	}
 
-	protected final Statement configureDataSourceBehaviour(DataSource dataSource)
+	protected final Statement configureDataSourceBehavior(DataSource dataSource)
 			throws SQLException {
 		Connection connection = mock(Connection.class);
 		Statement statement = mock(Statement.class);

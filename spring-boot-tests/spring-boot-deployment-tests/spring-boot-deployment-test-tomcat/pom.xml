@@ -14,7 +14,7 @@
 		<main.basedir>${basedir}/../../..</main.basedir>
 		<cargo.container.id>tomcat8x</cargo.container.id>
 		<cargo.container.url>
-			http://central.maven.org/maven2/org/apache/tomcat/tomcat/${tomcat.version}/tomcat-${tomcat.version}.zip
+			https://repo.maven.apache.org/maven2/org/apache/tomcat/tomcat/${tomcat.version}/tomcat-${tomcat.version}.zip
 		</cargo.container.url>
 	</properties>
 	<dependencies>
@@ -27,6 +27,10 @@
 					<artifactId>spring-boot-starter-tomcat</artifactId>
 				</exclusion>
 			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>javax.servlet</groupId>
