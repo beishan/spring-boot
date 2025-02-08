@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -26,15 +26,16 @@ import org.springframework.util.ClassUtils;
 
 /**
  * A {@link TestExecutionListener} for Spring REST Docs that removes the need for a
- * <code>@Rule</code> when using JUnit or manual before and after test calls when using
- * TestNG.
+ * {@code @Rule} when using JUnit or manual before and after test calls when using TestNG.
  *
  * @author Andy Wilkinson
  * @since 1.4.0
  */
 public class RestDocsTestExecutionListener extends AbstractTestExecutionListener {
 
-	private static final String REST_DOCS_CLASS = "org.springframework.restdocs.ManualRestDocumentation";
+	private static final boolean REST_DOCS_PRESENT = ClassUtils.isPresent(
+			"org.springframework.restdocs.ManualRestDocumentation",
+			RestDocsTestExecutionListener.class.getClassLoader());
 
 	@Override
 	public int getOrder() {
@@ -43,46 +44,37 @@ public class RestDocsTestExecutionListener extends AbstractTestExecutionListener
 
 	@Override
 	public void beforeTestMethod(TestContext testContext) throws Exception {
-		if (restDocsIsPresent()) {
+		if (REST_DOCS_PRESENT) {
 			new DocumentationHandler().beforeTestMethod(testContext);
 		}
 	}
 
 	@Override
 	public void afterTestMethod(TestContext testContext) throws Exception {
-		if (restDocsIsPresent()) {
+		if (REST_DOCS_PRESENT) {
 			new DocumentationHandler().afterTestMethod(testContext);
 		}
 	}
 
-	private boolean restDocsIsPresent() {
-		return ClassUtils.isPresent(REST_DOCS_CLASS, getClass().getClassLoader());
-	}
+	private static final class DocumentationHandler {
 
-	private static class DocumentationHandler {
-
-		private void beforeTestMethod(TestContext testContext) throws Exception {
-			ManualRestDocumentation restDocumentation = findManualRestDocumentation(
-					testContext);
+		private void beforeTestMethod(TestContext testContext) {
+			ManualRestDocumentation restDocumentation = findManualRestDocumentation(testContext);
 			if (restDocumentation != null) {
-				restDocumentation.beforeTest(testContext.getTestClass(),
-						testContext.getTestMethod().getName());
+				restDocumentation.beforeTest(testContext.getTestClass(), testContext.getTestMethod().getName());
 			}
 		}
 
 		private void afterTestMethod(TestContext testContext) {
-			ManualRestDocumentation restDocumentation = findManualRestDocumentation(
-					testContext);
+			ManualRestDocumentation restDocumentation = findManualRestDocumentation(testContext);
 			if (restDocumentation != null) {
 				restDocumentation.afterTest();
 			}
 		}
 
-		private ManualRestDocumentation findManualRestDocumentation(
-				TestContext testContext) {
+		private ManualRestDocumentation findManualRestDocumentation(TestContext testContext) {
 			try {
-				return testContext.getApplicationContext()
-						.getBean(ManualRestDocumentation.class);
+				return testContext.getApplicationContext().getBean(ManualRestDocumentation.class);
 			}
 			catch (NoSuchBeanDefinitionException ex) {
 				return null;

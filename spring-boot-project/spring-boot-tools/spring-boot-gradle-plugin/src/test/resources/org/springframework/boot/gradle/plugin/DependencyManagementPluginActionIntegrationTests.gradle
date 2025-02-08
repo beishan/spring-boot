@@ -1,11 +1,7 @@
-buildscript {
-	dependencies {
-		classpath files(pluginClasspath.split(','))
-	}
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '{version}'
 }
-
-apply plugin: 'java'
-apply plugin: 'org.springframework.boot'
 
 if (project.hasProperty('applyDependencyManagementPlugin')) {
 	apply plugin: 'io.spring.dependency-management'
@@ -21,12 +17,15 @@ if (project.hasProperty('applyDependencyManagementPlugin')) {
 }
 
 repositories {
-	mavenLocal()
+	maven {
+		url = 'repository'
+	}
 }
 
 task doesNotHaveDependencyManagement {
+	def extensions = project.extensions
 	doLast {
-		if (project.extensions.findByName('dependencyManagement') != null) {
+		if (extensions.findByName('dependencyManagement') != null) {
 			throw new GradleException('Found dependency management extension')
 		}
 	}

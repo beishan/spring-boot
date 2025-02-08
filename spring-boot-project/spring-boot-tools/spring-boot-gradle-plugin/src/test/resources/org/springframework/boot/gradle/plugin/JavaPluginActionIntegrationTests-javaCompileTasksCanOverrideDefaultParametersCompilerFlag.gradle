@@ -1,21 +1,20 @@
-buildscript {
-	dependencies {
-		classpath files(pluginClasspath.split(','))
-	}
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '{version}'
 }
 
-apply plugin: 'org.springframework.boot'
-apply plugin: 'java'
+springBoot {
+	mainClass = "com.example.Main"
+}
 
 tasks.withType(JavaCompile) {
 	options.compilerArgs = ['-Xlint:all']
 }
 
-
-task('javaCompileTasksCompilerArgs') {
-	doFirst {
-		tasks.withType(JavaCompile) {
-			println "$name compiler args: ${options.compilerArgs}"
+gradle.taskGraph.whenReady {
+	gradle.taskGraph.allTasks.each {
+		if (it instanceof JavaCompile) {
+			println "${it.name} compiler args: ${it.options.compilerArgs}"
 		}
 	}
 }

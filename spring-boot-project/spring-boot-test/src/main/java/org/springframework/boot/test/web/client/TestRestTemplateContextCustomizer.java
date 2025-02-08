@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,6 +16,7 @@
 
 package org.springframework.boot.test.web.client;
 
+import org.springframework.aot.AotDetector;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
@@ -37,9 +38,9 @@ import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.ConfigurationClassPostProcessor;
 import org.springframework.core.Ordered;
-import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.test.context.ContextCustomizer;
 import org.springframework.test.context.MergedContextConfiguration;
+import org.springframework.test.context.TestContextAnnotationUtils;
 
 /**
  * {@link ContextCustomizer} for {@link TestRestTemplate}.
@@ -52,26 +53,32 @@ class TestRestTemplateContextCustomizer implements ContextCustomizer {
 	@Override
 	public void customizeContext(ConfigurableApplicationContext context,
 			MergedContextConfiguration mergedContextConfiguration) {
-		SpringBootTest annotation = AnnotatedElementUtils.getMergedAnnotation(
-				mergedContextConfiguration.getTestClass(), SpringBootTest.class);
-		if (annotation.webEnvironment().isEmbedded()) {
+		if (AotDetector.useGeneratedArtifacts()) {
+			return;
+		}
+		SpringBootTest springBootTest = TestContextAnnotationUtils
+			.findMergedAnnotation(mergedContextConfiguration.getTestClass(), SpringBootTest.class);
+		if (springBootTest.webEnvironment().isEmbedded()) {
 			registerTestRestTemplate(context);
 		}
 	}
 
 	private void registerTestRestTemplate(ConfigurableApplicationContext context) {
 		ConfigurableListableBeanFactory beanFactory = context.getBeanFactory();
-		if (beanFactory instanceof BeanDefinitionRegistry) {
-			registerTestRestTemplate((BeanDefinitionRegistry) context);
+		if (beanFactory instanceof BeanDefinitionRegistry registry) {
+			registerTestRestTemplate(registry);
 		}
 	}
 
 	private void registerTestRestTemplate(BeanDefinitionRegistry registry) {
-		RootBeanDefinition definition = new RootBeanDefinition(
-				TestRestTemplateRegistrar.class);
+		RootBeanDefinition definition = new RootBeanDefinition(TestRestTemplateRegistrar.class);
 		definition.setRole(BeanDefinition.ROLE_INFRASTRUCTURE);
-		registry.registerBeanDefinition(TestRestTemplateRegistrar.class.getName(),
-				definition);
+		registry.registerBeanDefinition(TestRestTemplateRegistrar.class.getName(), definition);
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		return (obj != null) && (obj.getClass() == getClass());
 	}
 
 	@Override
@@ -79,21 +86,12 @@ class TestRestTemplateContextCustomizer implements ContextCustomizer {
 		return getClass().hashCode();
 	}
 
-	@Override
-	public boolean equals(Object obj) {
-		if (obj == null || obj.getClass() != getClass()) {
-			return false;
-		}
-		return true;
-	}
-
 	/**
 	 * {@link BeanDefinitionRegistryPostProcessor} that runs after the
 	 * {@link ConfigurationClassPostProcessor} and add a {@link TestRestTemplateFactory}
 	 * bean definition when a {@link TestRestTemplate} hasn't already been registered.
 	 */
-	private static class TestRestTemplateRegistrar
-			implements BeanDefinitionRegistryPostProcessor, Ordered, BeanFactoryAware {
+	static class TestRestTemplateRegistrar implements BeanDefinitionRegistryPostProcessor, Ordered, BeanFactoryAware {
 
 		private BeanFactory beanFactory;
 
@@ -108,11 +106,12 @@ class TestRestTemplateContextCustomizer implements ContextCustomizer {
 		}
 
 		@Override
-		public void postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry)
-				throws BeansException {
-			if (BeanFactoryUtils.beanNamesForTypeIncludingAncestors(
-					(ListableBeanFactory) this.beanFactory,
-					TestRestTemplate.class).length == 0) {
+		public void postProcessBeanDefinitionRegistry(BeanDefinitionRegistry registry) throws BeansException {
+			if (AotDetector.useGeneratedArtifacts()) {
+				return;
+			}
+			if (BeanFactoryUtils.beanNamesForTypeIncludingAncestors((ListableBeanFactory) this.beanFactory,
+					TestRestTemplate.class, false, false).length == 0) {
 				registry.registerBeanDefinition(TestRestTemplate.class.getName(),
 						new RootBeanDefinition(TestRestTemplateFactory.class));
 			}
@@ -120,8 +119,7 @@ class TestRestTemplateContextCustomizer implements ContextCustomizer {
 		}
 
 		@Override
-		public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory)
-				throws BeansException {
+		public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
 		}
 
 	}
@@ -129,8 +127,7 @@ class TestRestTemplateContextCustomizer implements ContextCustomizer {
 	/**
 	 * {@link FactoryBean} used to create and configure a {@link TestRestTemplate}.
 	 */
-	public static class TestRestTemplateFactory
-			implements FactoryBean<TestRestTemplate>, ApplicationContextAware {
+	public static class TestRestTemplateFactory implements FactoryBean<TestRestTemplate>, ApplicationContextAware {
 
 		private static final HttpClientOption[] DEFAULT_OPTIONS = {};
 
@@ -139,14 +136,13 @@ class TestRestTemplateContextCustomizer implements ContextCustomizer {
 		private TestRestTemplate template;
 
 		@Override
-		public void setApplicationContext(ApplicationContext applicationContext)
-				throws BeansException {
+		public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
 			RestTemplateBuilder builder = getRestTemplateBuilder(applicationContext);
 			boolean sslEnabled = isSslEnabled(applicationContext);
 			TestRestTemplate template = new TestRestTemplate(builder, null, null,
 					sslEnabled ? SSL_OPTIONS : DEFAULT_OPTIONS);
-			LocalHostUriTemplateHandler handler = new LocalHostUriTemplateHandler(
-					applicationContext.getEnvironment(), sslEnabled ? "https" : "http");
+			LocalHostUriTemplateHandler handler = new LocalHostUriTemplateHandler(applicationContext.getEnvironment(),
+					sslEnabled ? "https" : "http");
 			template.setUriTemplateHandler(handler);
 			this.template = template;
 		}
@@ -154,17 +150,15 @@ class TestRestTemplateContextCustomizer implements ContextCustomizer {
 		private boolean isSslEnabled(ApplicationContext context) {
 			try {
 				AbstractServletWebServerFactory webServerFactory = context
-						.getBean(AbstractServletWebServerFactory.class);
-				return webServerFactory.getSsl() != null
-						&& webServerFactory.getSsl().isEnabled();
+					.getBean(AbstractServletWebServerFactory.class);
+				return webServerFactory.getSsl() != null && webServerFactory.getSsl().isEnabled();
 			}
 			catch (NoSuchBeanDefinitionException ex) {
 				return false;
 			}
 		}
 
-		private RestTemplateBuilder getRestTemplateBuilder(
-				ApplicationContext applicationContext) {
+		private RestTemplateBuilder getRestTemplateBuilder(ApplicationContext applicationContext) {
 			try {
 				return applicationContext.getBean(RestTemplateBuilder.class);
 			}

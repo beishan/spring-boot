@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,27 +17,28 @@
 package org.springframework.boot.actuate.flyway;
 
 import java.time.Instant;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
 import org.flywaydb.core.api.MigrationState;
-import org.flywaydb.core.api.MigrationType;
 
+import org.springframework.boot.actuate.endpoint.OperationResponseBody;
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
 import org.springframework.context.ApplicationContext;
 
 /**
- * {@link Endpoint} to expose flyway info.
+ * {@link Endpoint @Endpoint} to expose flyway info.
  *
  * @author Eddú Meléndez
  * @author Phillip Webb
  * @author Andy Wilkinson
+ * @author Artsiom Yudovin
  * @since 2.0.0
  */
 @Endpoint(id = "flyway")
@@ -50,51 +51,48 @@ public class FlywayEndpoint {
 	}
 
 	@ReadOperation
-	public ApplicationFlywayBeans flywayBeans() {
+	public FlywayBeansDescriptor flywayBeans() {
 		ApplicationContext target = this.context;
-		Map<String, ContextFlywayBeans> contextFlywayBeans = new HashMap<>();
+		Map<String, ContextFlywayBeansDescriptor> contextFlywayBeans = new HashMap<>();
 		while (target != null) {
 			Map<String, FlywayDescriptor> flywayBeans = new HashMap<>();
-			target.getBeansOfType(Flyway.class).forEach((name, flyway) -> flywayBeans
-					.put(name, new FlywayDescriptor(flyway.info().all())));
+			target.getBeansOfType(Flyway.class)
+				.forEach((name, flyway) -> flywayBeans.put(name, new FlywayDescriptor(flyway.info().all())));
 			ApplicationContext parent = target.getParent();
-			contextFlywayBeans.put(target.getId(), new ContextFlywayBeans(flywayBeans,
-					parent == null ? null : parent.getId()));
+			contextFlywayBeans.put(target.getId(),
+					new ContextFlywayBeansDescriptor(flywayBeans, (parent != null) ? parent.getId() : null));
 			target = parent;
 		}
-		return new ApplicationFlywayBeans(contextFlywayBeans);
+		return new FlywayBeansDescriptor(contextFlywayBeans);
 	}
 
 	/**
-	 * Description of an application's {@link Flyway} beans, primarily intended for
-	 * serialization to JSON.
+	 * Description of an application's {@link Flyway} beans.
 	 */
-	public static final class ApplicationFlywayBeans {
+	public static final class FlywayBeansDescriptor implements OperationResponseBody {
 
-		private final Map<String, ContextFlywayBeans> contexts;
+		private final Map<String, ContextFlywayBeansDescriptor> contexts;
 
-		private ApplicationFlywayBeans(Map<String, ContextFlywayBeans> contexts) {
+		private FlywayBeansDescriptor(Map<String, ContextFlywayBeansDescriptor> contexts) {
 			this.contexts = contexts;
 		}
 
-		public Map<String, ContextFlywayBeans> getContexts() {
+		public Map<String, ContextFlywayBeansDescriptor> getContexts() {
 			return this.contexts;
 		}
 
 	}
 
 	/**
-	 * Description of an application context's {@link Flyway} beans, primarily intended
-	 * for serialization to JSON.
+	 * Description of an application context's {@link Flyway} beans.
 	 */
-	public static final class ContextFlywayBeans {
+	public static final class ContextFlywayBeansDescriptor {
 
 		private final Map<String, FlywayDescriptor> flywayBeans;
 
 		private final String parentId;
 
-		private ContextFlywayBeans(Map<String, FlywayDescriptor> flywayBeans,
-				String parentId) {
+		private ContextFlywayBeansDescriptor(Map<String, FlywayDescriptor> flywayBeans, String parentId) {
 			this.flywayBeans = flywayBeans;
 			this.parentId = parentId;
 		}
@@ -110,33 +108,32 @@ public class FlywayEndpoint {
 	}
 
 	/**
-	 * Description of a {@link Flyway} bean, primarily intended for serialization to JSON.
+	 * Description of a {@link Flyway} bean.
 	 */
 	public static class FlywayDescriptor {
 
-		private final List<FlywayMigration> migrations;
+		private final List<FlywayMigrationDescriptor> migrations;
 
 		private FlywayDescriptor(MigrationInfo[] migrations) {
-			this.migrations = Stream.of(migrations).map(FlywayMigration::new)
-					.collect(Collectors.toList());
+			this.migrations = Stream.of(migrations).map(FlywayMigrationDescriptor::new).toList();
 		}
 
-		public FlywayDescriptor(List<FlywayMigration> migrations) {
+		public FlywayDescriptor(List<FlywayMigrationDescriptor> migrations) {
 			this.migrations = migrations;
 		}
 
-		public List<FlywayMigration> getMigrations() {
+		public List<FlywayMigrationDescriptor> getMigrations() {
 			return this.migrations;
 		}
 
 	}
 
 	/**
-	 * Details of a migration performed by Flyway.
+	 * Description of a migration performed by Flyway.
 	 */
-	public static final class FlywayMigration {
+	public static final class FlywayMigrationDescriptor {
 
-		private final MigrationType type;
+		private final String type;
 
 		private final Integer checksum;
 
@@ -156,24 +153,28 @@ public class FlywayEndpoint {
 
 		private final Integer executionTime;
 
-		private FlywayMigration(MigrationInfo info) {
-			this.type = info.getType();
+		private FlywayMigrationDescriptor(MigrationInfo info) {
+			this.type = info.getType().name();
 			this.checksum = info.getChecksum();
 			this.version = nullSafeToString(info.getVersion());
 			this.description = info.getDescription();
 			this.script = info.getScript();
 			this.state = info.getState();
 			this.installedBy = info.getInstalledBy();
-			this.installedOn = Instant.ofEpochMilli(info.getInstalledOn().getTime());
 			this.installedRank = info.getInstalledRank();
 			this.executionTime = info.getExecutionTime();
+			this.installedOn = nullSafeToInstant(info.getInstalledOn());
 		}
 
 		private String nullSafeToString(Object obj) {
-			return (obj == null ? null : obj.toString());
+			return (obj != null) ? obj.toString() : null;
 		}
 
-		public MigrationType getType() {
+		private Instant nullSafeToInstant(Date date) {
+			return (date != null) ? Instant.ofEpochMilli(date.getTime()) : null;
+		}
+
+		public String getType() {
 			return this.type;
 		}
 

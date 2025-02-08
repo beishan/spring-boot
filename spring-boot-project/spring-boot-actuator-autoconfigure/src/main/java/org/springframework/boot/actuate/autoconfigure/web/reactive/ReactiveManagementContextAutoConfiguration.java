@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,12 +18,17 @@ package org.springframework.boot.actuate.autoconfigure.web.reactive;
 
 import reactor.core.publisher.Flux;
 
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.actuate.autoconfigure.web.ManagementContextFactory;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication.Type;
+import org.springframework.boot.autoconfigure.web.embedded.EmbeddedWebServerFactoryCustomizerAutoConfiguration;
+import org.springframework.boot.autoconfigure.web.reactive.ReactiveWebServerFactoryAutoConfiguration;
+import org.springframework.boot.web.reactive.server.ReactiveWebServerFactory;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 /**
  * {@link EnableAutoConfiguration Auto-configuration} for Reactive-specific management
@@ -32,14 +37,16 @@ import org.springframework.context.annotation.Configuration;
  * @author Phillip Webb
  * @since 2.0.0
  */
-@Configuration
+@AutoConfiguration
 @ConditionalOnClass(Flux.class)
 @ConditionalOnWebApplication(type = Type.REACTIVE)
 public class ReactiveManagementContextAutoConfiguration {
 
 	@Bean
-	public ReactiveManagementContextFactory reactiveWebChildContextFactory() {
-		return new ReactiveManagementContextFactory();
+	public static ManagementContextFactory reactiveWebChildContextFactory() {
+		return new ManagementContextFactory(WebApplicationType.REACTIVE, ReactiveWebServerFactory.class,
+				ReactiveWebServerFactoryAutoConfiguration.class,
+				EmbeddedWebServerFactoryCustomizerAutoConfiguration.class);
 	}
 
 }

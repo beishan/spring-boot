@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,9 +18,7 @@ package org.springframework.boot.autoconfigure.security.reactive;
 
 import java.util.EnumSet;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import reactor.core.publisher.Mono;
@@ -53,7 +51,7 @@ public final class StaticResourceRequest {
 	 * {@link StaticResourceServerWebExchange#excluding(StaticResourceLocation, StaticResourceLocation...)
 	 * excluding} method can be used to remove specific locations if required. For
 	 * example: <pre class="code">
-	 * StaticResourceRequest.atCommonLocations().excluding(StaticResourceLocation.CSS)
+	 * PathRequest.toStaticResources().atCommonLocations().excluding(StaticResourceLocation.CSS)
 	 * </pre>
 	 * @return the configured {@link ServerWebExchangeMatcher}
 	 */
@@ -64,27 +62,26 @@ public final class StaticResourceRequest {
 	/**
 	 * Returns a matcher that includes the specified {@link StaticResourceLocation
 	 * Locations}. For example: <pre class="code">
-	 * at(StaticResourceLocation.CSS, StaticResourceLocation.JAVA_SCRIPT)
+	 * PathRequest.toStaticResources().at(StaticResourceLocation.CSS, StaticResourceLocation.JAVA_SCRIPT)
 	 * </pre>
 	 * @param first the first location to include
 	 * @param rest additional locations to include
 	 * @return the configured {@link ServerWebExchangeMatcher}
 	 */
-	public StaticResourceServerWebExchange at(StaticResourceLocation first,
-			StaticResourceLocation... rest) {
+	public StaticResourceServerWebExchange at(StaticResourceLocation first, StaticResourceLocation... rest) {
 		return at(EnumSet.of(first, rest));
 	}
 
 	/**
 	 * Returns a matcher that includes the specified {@link StaticResourceLocation
 	 * Locations}. For example: <pre class="code">
-	 * at(locations)
+	 * PathRequest.toStaticResources().at(locations)
 	 * </pre>
 	 * @param locations the locations to include
 	 * @return the configured {@link ServerWebExchangeMatcher}
 	 */
 	public StaticResourceServerWebExchange at(Set<StaticResourceLocation> locations) {
-		Assert.notNull(locations, "Locations must not be null");
+		Assert.notNull(locations, "'locations' must not be null");
 		return new StaticResourceServerWebExchange(new LinkedHashSet<>(locations));
 	}
 
@@ -92,8 +89,7 @@ public final class StaticResourceRequest {
 	 * The server web exchange matcher used to match against resource
 	 * {@link StaticResourceLocation locations}.
 	 */
-	public static final class StaticResourceServerWebExchange
-			implements ServerWebExchangeMatcher {
+	public static final class StaticResourceServerWebExchange implements ServerWebExchangeMatcher {
 
 		private final Set<StaticResourceLocation> locations;
 
@@ -108,8 +104,7 @@ public final class StaticResourceRequest {
 		 * @param rest additional locations to exclude
 		 * @return a new {@link StaticResourceServerWebExchange}
 		 */
-		public StaticResourceServerWebExchange excluding(StaticResourceLocation first,
-				StaticResourceLocation... rest) {
+		public StaticResourceServerWebExchange excluding(StaticResourceLocation first, StaticResourceLocation... rest) {
 			return excluding(EnumSet.of(first, rest));
 		}
 
@@ -119,17 +114,11 @@ public final class StaticResourceRequest {
 		 * @param locations the locations to exclude
 		 * @return a new {@link StaticResourceServerWebExchange}
 		 */
-		public StaticResourceServerWebExchange excluding(
-				Set<StaticResourceLocation> locations) {
-			Assert.notNull(locations, "Locations must not be null");
+		public StaticResourceServerWebExchange excluding(Set<StaticResourceLocation> locations) {
+			Assert.notNull(locations, "'locations' must not be null");
 			Set<StaticResourceLocation> subset = new LinkedHashSet<>(this.locations);
 			subset.removeAll(locations);
 			return new StaticResourceServerWebExchange(subset);
-		}
-
-		private List<ServerWebExchangeMatcher> getDelegateMatchers() {
-			return getPatterns().map(PathPatternParserServerWebExchangeMatcher::new)
-					.collect(Collectors.toList());
 		}
 
 		private Stream<String> getPatterns() {
@@ -138,10 +127,13 @@ public final class StaticResourceRequest {
 
 		@Override
 		public Mono<MatchResult> matches(ServerWebExchange exchange) {
-			OrServerWebExchangeMatcher matcher = new OrServerWebExchangeMatcher(
-					getDelegateMatchers());
-			return matcher.matches(exchange);
+			return new OrServerWebExchangeMatcher(getDelegateMatchers().toList()).matches(exchange);
 		}
+
+		private Stream<ServerWebExchangeMatcher> getDelegateMatchers() {
+			return getPatterns().map(PathPatternParserServerWebExchangeMatcher::new);
+		}
+
 	}
 
 }

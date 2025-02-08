@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,29 +19,36 @@ package org.springframework.boot.autoconfigure.web;
 import java.io.File;
 import java.net.InetAddress;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.TimeZone;
+
+import io.undertow.UndertowOptions;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.DeprecatedConfigurationProperty;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 import org.springframework.boot.convert.DurationUnit;
 import org.springframework.boot.web.server.Compression;
+import org.springframework.boot.web.server.Cookie;
 import org.springframework.boot.web.server.Http2;
+import org.springframework.boot.web.server.MimeMappings;
+import org.springframework.boot.web.server.Shutdown;
 import org.springframework.boot.web.server.Ssl;
+import org.springframework.boot.web.servlet.server.Encoding;
 import org.springframework.boot.web.servlet.server.Jsp;
 import org.springframework.boot.web.servlet.server.Session;
-import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
+import org.springframework.util.unit.DataSize;
 
 /**
- * {@link ConfigurationProperties} for a web server (e.g. port and path settings).
+ * {@link ConfigurationProperties @ConfigurationProperties} for a web server (e.g. port
+ * and path settings).
  *
  * @author Dave Syer
  * @author Stephane Nicoll
@@ -54,6 +61,19 @@ import org.springframework.util.StringUtils;
  * @author Aurélien Leboulanger
  * @author Brian Clozel
  * @author Olivier Lamy
+ * @author Chentao Qu
+ * @author Artsiom Yudovin
+ * @author Andrew McGhie
+ * @author Rafiullah Hamedy
+ * @author Dirk Deyne
+ * @author HaiTao Zhang
+ * @author Victor Mandujano
+ * @author Chris Bono
+ * @author Parviz Rozikov
+ * @author Florian Storz
+ * @author Michael Weidmann
+ * @author Lasse Wulff
+ * @since 1.0.0
  */
 @ConfigurationProperties(prefix = "server", ignoreUnknownFields = true)
 public class ServerProperties {
@@ -72,9 +92,9 @@ public class ServerProperties {
 	private final ErrorProperties error = new ErrorProperties();
 
 	/**
-	 * Whether X-Forwarded-* headers should be applied to the HttpRequest.
+	 * Strategy for handling X-Forwarded-* headers.
 	 */
-	private Boolean useForwardHeaders;
+	private ForwardHeadersStrategy forwardHeadersStrategy;
 
 	/**
 	 * Value to use for the Server response header (if empty, no header is sent).
@@ -82,16 +102,18 @@ public class ServerProperties {
 	private String serverHeader;
 
 	/**
-	 * Maximum size, in bytes, of the HTTP message header.
+	 * Maximum size of the HTTP request header. Refer to the documentation for your chosen
+	 * embedded server for details of exactly how this limit is applied. For example,
+	 * Netty applies the limit separately to each individual header in the request whereas
+	 * Tomcat applies the limit to the combined size of the request line and all of the
+	 * header names and values in the request.
 	 */
-	private int maxHttpHeaderSize = 0; // bytes
+	private DataSize maxHttpRequestHeaderSize = DataSize.ofKilobytes(8);
 
 	/**
-	 * Time that connectors wait for another HTTP request before closing the connection.
-	 * When not set, the connector's container-specific default is used. Use a value of -1
-	 * to indicate no (that is, an infinite) timeout.
+	 * Type of shutdown that the server will support.
 	 */
-	private Duration connectionTimeout;
+	private Shutdown shutdown = Shutdown.GRACEFUL;
 
 	@NestedConfigurationProperty
 	private Ssl ssl;
@@ -99,14 +121,23 @@ public class ServerProperties {
 	@NestedConfigurationProperty
 	private final Compression compression = new Compression();
 
+	/**
+	 * Custom MIME mappings in addition to the default MIME mappings.
+	 */
+	private final MimeMappings mimeMappings = new MimeMappings();
+
 	@NestedConfigurationProperty
 	private final Http2 http2 = new Http2();
 
 	private final Servlet servlet = new Servlet();
 
+	private final Reactive reactive = new Reactive();
+
 	private final Tomcat tomcat = new Tomcat();
 
 	private final Jetty jetty = new Jetty();
+
+	private final Netty netty = new Netty();
 
 	private final Undertow undertow = new Undertow();
 
@@ -126,14 +157,6 @@ public class ServerProperties {
 		this.address = address;
 	}
 
-	public Boolean isUseForwardHeaders() {
-		return this.useForwardHeaders;
-	}
-
-	public void setUseForwardHeaders(Boolean useForwardHeaders) {
-		this.useForwardHeaders = useForwardHeaders;
-	}
-
 	public String getServerHeader() {
 		return this.serverHeader;
 	}
@@ -142,20 +165,20 @@ public class ServerProperties {
 		this.serverHeader = serverHeader;
 	}
 
-	public int getMaxHttpHeaderSize() {
-		return this.maxHttpHeaderSize;
+	public DataSize getMaxHttpRequestHeaderSize() {
+		return this.maxHttpRequestHeaderSize;
 	}
 
-	public void setMaxHttpHeaderSize(int maxHttpHeaderSize) {
-		this.maxHttpHeaderSize = maxHttpHeaderSize;
+	public void setMaxHttpRequestHeaderSize(DataSize maxHttpRequestHeaderSize) {
+		this.maxHttpRequestHeaderSize = maxHttpRequestHeaderSize;
 	}
 
-	public Duration getConnectionTimeout() {
-		return this.connectionTimeout;
+	public Shutdown getShutdown() {
+		return this.shutdown;
 	}
 
-	public void setConnectionTimeout(Duration connectionTimeout) {
-		this.connectionTimeout = connectionTimeout;
+	public void setShutdown(Shutdown shutdown) {
+		this.shutdown = shutdown;
 	}
 
 	public ErrorProperties getError() {
@@ -174,12 +197,24 @@ public class ServerProperties {
 		return this.compression;
 	}
 
+	public MimeMappings getMimeMappings() {
+		return this.mimeMappings;
+	}
+
+	public void setMimeMappings(Map<String, String> customMappings) {
+		customMappings.forEach(this.mimeMappings::add);
+	}
+
 	public Http2 getHttp2() {
 		return this.http2;
 	}
 
 	public Servlet getServlet() {
 		return this.servlet;
+	}
+
+	public Reactive getReactive() {
+		return this.reactive;
 	}
 
 	public Tomcat getTomcat() {
@@ -190,12 +225,24 @@ public class ServerProperties {
 		return this.jetty;
 	}
 
+	public Netty getNetty() {
+		return this.netty;
+	}
+
 	public Undertow getUndertow() {
 		return this.undertow;
 	}
 
+	public ForwardHeadersStrategy getForwardHeadersStrategy() {
+		return this.forwardHeadersStrategy;
+	}
+
+	public void setForwardHeadersStrategy(ForwardHeadersStrategy forwardHeadersStrategy) {
+		this.forwardHeadersStrategy = forwardHeadersStrategy;
+	}
+
 	/**
-	 * Servlet properties.
+	 * Servlet server properties.
 	 */
 	public static class Servlet {
 
@@ -215,9 +262,12 @@ public class ServerProperties {
 		private String applicationDisplayName = "application";
 
 		/**
-		 * Path of the main dispatcher servlet.
+		 * Whether to register the default Servlet with the container.
 		 */
-		private String path = "/";
+		private boolean registerDefaultServlet = false;
+
+		@NestedConfigurationProperty
+		private final Encoding encoding = new Encoding();
 
 		@NestedConfigurationProperty
 		private final Jsp jsp = new Jsp();
@@ -234,10 +284,14 @@ public class ServerProperties {
 		}
 
 		private String cleanContextPath(String contextPath) {
-			if (StringUtils.hasText(contextPath) && contextPath.endsWith("/")) {
-				return contextPath.substring(0, contextPath.length() - 1);
+			String candidate = null;
+			if (StringUtils.hasLength(contextPath)) {
+				candidate = contextPath.strip();
 			}
-			return contextPath;
+			if (StringUtils.hasText(candidate) && candidate.endsWith("/")) {
+				return candidate.substring(0, candidate.length() - 1);
+			}
+			return candidate;
 		}
 
 		public String getApplicationDisplayName() {
@@ -248,17 +302,20 @@ public class ServerProperties {
 			this.applicationDisplayName = displayName;
 		}
 
-		public String getPath() {
-			return this.path;
+		public boolean isRegisterDefaultServlet() {
+			return this.registerDefaultServlet;
 		}
 
-		public void setPath(String path) {
-			Assert.notNull(path, "Path must not be null");
-			this.path = path;
+		public void setRegisterDefaultServlet(boolean registerDefaultServlet) {
+			this.registerDefaultServlet = registerDefaultServlet;
 		}
 
 		public Map<String, String> getContextParameters() {
 			return this.contextParameters;
+		}
+
+		public Encoding getEncoding() {
+			return this.encoding;
 		}
 
 		public Jsp getJsp() {
@@ -269,55 +326,56 @@ public class ServerProperties {
 			return this.session;
 		}
 
-		public String getServletMapping() {
-			if (this.path.equals("") || this.path.equals("/")) {
-				return "/";
-			}
-			if (this.path.contains("*")) {
-				return this.path;
-			}
-			if (this.path.endsWith("/")) {
-				return this.path + "*";
-			}
-			return this.path + "/*";
+	}
+
+	/**
+	 * Reactive server properties.
+	 */
+	public static class Reactive {
+
+		private final Session session = new Session();
+
+		public Session getSession() {
+			return this.session;
 		}
 
-		public String getPath(String path) {
-			String prefix = getServletPrefix();
-			if (!path.startsWith("/")) {
-				path = "/" + path;
-			}
-			return prefix + path;
-		}
+		public static class Session {
 
-		public String getServletPrefix() {
-			String result = this.path;
-			int index = result.indexOf('*');
-			if (index != -1) {
-				result = result.substring(0, index);
-			}
-			if (result.endsWith("/")) {
-				result = result.substring(0, result.length() - 1);
-			}
-			return result;
-		}
+			/**
+			 * Session timeout. If a duration suffix is not specified, seconds will be
+			 * used.
+			 */
+			@DurationUnit(ChronoUnit.SECONDS)
+			private Duration timeout = Duration.ofMinutes(30);
 
-		public String[] getPathsArray(Collection<String> paths) {
-			String[] result = new String[paths.size()];
-			int i = 0;
-			for (String path : paths) {
-				result[i++] = getPath(path);
-			}
-			return result;
-		}
+			/**
+			 * Maximum number of sessions that can be stored.
+			 */
+			private int maxSessions = 10000;
 
-		public String[] getPathsArray(String[] paths) {
-			String[] result = new String[paths.length];
-			int i = 0;
-			for (String path : paths) {
-				result[i++] = getPath(path);
+			@NestedConfigurationProperty
+			private final Cookie cookie = new Cookie();
+
+			public Duration getTimeout() {
+				return this.timeout;
 			}
-			return result;
+
+			public void setTimeout(Duration timeout) {
+				this.timeout = timeout;
+			}
+
+			public int getMaxSessions() {
+				return this.maxSessions;
+			}
+
+			public void setMaxSessions(int maxSessions) {
+				this.maxSessions = maxSessions;
+			}
+
+			public Cookie getCookie() {
+				return this.cookie;
+			}
+
 		}
 
 	}
@@ -333,36 +391,9 @@ public class ServerProperties {
 		private final Accesslog accesslog = new Accesslog();
 
 		/**
-		 * Regular expression matching trusted IP addresses.
+		 * Thread related configuration.
 		 */
-		private String internalProxies = "10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|" // 10/8
-				+ "192\\.168\\.\\d{1,3}\\.\\d{1,3}|" // 192.168/16
-				+ "169\\.254\\.\\d{1,3}\\.\\d{1,3}|" // 169.254/16
-				+ "127\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|" // 127/8
-				+ "172\\.1[6-9]{1}\\.\\d{1,3}\\.\\d{1,3}|" // 172.16/12
-				+ "172\\.2[0-9]{1}\\.\\d{1,3}\\.\\d{1,3}|"
-				+ "172\\.3[0-1]{1}\\.\\d{1,3}\\.\\d{1,3}";
-
-		/**
-		 * Header that holds the incoming protocol, usually named "X-Forwarded-Proto".
-		 */
-		private String protocolHeader;
-
-		/**
-		 * Value of the protocol header indicating whether the incoming request uses SSL.
-		 */
-		private String protocolHeaderHttpsValue = "https";
-
-		/**
-		 * Name of the HTTP header used to override the original port value.
-		 */
-		private String portHeader = "X-Forwarded-Port";
-
-		/**
-		 * Name of the HTTP header from which the remote IP is extracted. For instance,
-		 * `X-FORWARDED-FOR`.
-		 */
-		private String remoteIpHeader;
+		private final Threads threads = new Threads();
 
 		/**
 		 * Tomcat base directory. If not specified, a temporary directory is used.
@@ -374,96 +405,126 @@ public class ServerProperties {
 		 * is not specified, seconds will be used.
 		 */
 		@DurationUnit(ChronoUnit.SECONDS)
-		private Duration backgroundProcessorDelay = Duration.ofSeconds(30);
+		private Duration backgroundProcessorDelay = Duration.ofSeconds(10);
 
 		/**
-		 * Maximum number of worker threads.
+		 * Maximum size of the form content in any HTTP post request.
 		 */
-		private int maxThreads = 0;
+		private DataSize maxHttpFormPostSize = DataSize.ofMegabytes(2);
 
 		/**
-		 * Minimum number of worker threads.
+		 * Maximum amount of request body to swallow.
 		 */
-		private int minSpareThreads = 0;
-
-		/**
-		 * Maximum size, in bytes, of the HTTP post content.
-		 */
-		private int maxHttpPostSize = 0;
-
-		/**
-		 * Maximum size, in bytes, of the HTTP message header.
-		 */
-		private int maxHttpHeaderSize = 0;
+		private DataSize maxSwallowSize = DataSize.ofMegabytes(2);
 
 		/**
 		 * Whether requests to the context root should be redirected by appending a / to
-		 * the path.
+		 * the path. When using SSL terminated at a proxy, this property should be set to
+		 * false.
 		 */
-		private Boolean redirectContextRoot;
+		private Boolean redirectContextRoot = true;
 
 		/**
 		 * Whether HTTP 1.1 and later location headers generated by a call to sendRedirect
 		 * will use relative or absolute redirects.
 		 */
-		private Boolean useRelativeRedirects;
+		private boolean useRelativeRedirects;
 
 		/**
 		 * Character encoding to use to decode the URI.
 		 */
-		private Charset uriEncoding;
+		private Charset uriEncoding = StandardCharsets.UTF_8;
 
 		/**
 		 * Maximum number of connections that the server accepts and processes at any
 		 * given time. Once the limit has been reached, the operating system may still
 		 * accept connections based on the "acceptCount" property.
 		 */
-		private int maxConnections = 0;
+		private int maxConnections = 8192;
 
 		/**
 		 * Maximum queue length for incoming connection requests when all possible request
 		 * processing threads are in use.
 		 */
-		private int acceptCount = 0;
+		private int acceptCount = 100;
 
 		/**
-		 * Comma-separated list of additional patterns that match jars to ignore for TLD
-		 * scanning. The special '?' and '*' characters can be used in the pattern to
-		 * match one and only one character and zero or more characters respectively.
+		 * Maximum number of idle processors that will be retained in the cache and reused
+		 * with a subsequent request. When set to -1 the cache will be unlimited with a
+		 * theoretical maximum size equal to the maximum number of connections.
+		 */
+		private int processorCache = 200;
+
+		/**
+		 * Time to wait for another HTTP request before the connection is closed. When not
+		 * set the connectionTimeout is used. When set to -1 there will be no timeout.
+		 */
+		private Duration keepAliveTimeout;
+
+		/**
+		 * Maximum number of HTTP requests that can be pipelined before the connection is
+		 * closed. When set to 0 or 1, keep-alive and pipelining are disabled. When set to
+		 * -1, an unlimited number of pipelined or keep-alive requests are allowed.
+		 */
+		private int maxKeepAliveRequests = 100;
+
+		/**
+		 * List of additional patterns that match jars to ignore for TLD scanning. The
+		 * special '?' and '*' characters can be used in the pattern to match one and only
+		 * one character and zero or more characters respectively.
 		 */
 		private List<String> additionalTldSkipPatterns = new ArrayList<>();
+
+		/**
+		 * List of additional unencoded characters that should be allowed in URI paths.
+		 * Only "< > [ \ ] ^ ` { | }" are allowed.
+		 */
+		private List<Character> relaxedPathChars = new ArrayList<>();
+
+		/**
+		 * List of additional unencoded characters that should be allowed in URI query
+		 * strings. Only "< > [ \ ] ^ ` { | }" are allowed.
+		 */
+		private List<Character> relaxedQueryChars = new ArrayList<>();
+
+		/**
+		 * Amount of time the connector will wait, after accepting a connection, for the
+		 * request URI line to be presented.
+		 */
+		private Duration connectionTimeout;
 
 		/**
 		 * Static resource configuration.
 		 */
 		private final Resource resource = new Resource();
 
-		public int getMaxThreads() {
-			return this.maxThreads;
-		}
+		/**
+		 * Modeler MBean Registry configuration.
+		 */
+		private final Mbeanregistry mbeanregistry = new Mbeanregistry();
 
-		public void setMaxThreads(int maxThreads) {
-			this.maxThreads = maxThreads;
-		}
+		/**
+		 * Remote Ip Valve configuration.
+		 */
+		private final Remoteip remoteip = new Remoteip();
 
-		public int getMinSpareThreads() {
-			return this.minSpareThreads;
-		}
+		/**
+		 * Maximum size of the HTTP response header.
+		 */
+		private DataSize maxHttpResponseHeaderSize = DataSize.ofKilobytes(8);
 
-		public void setMinSpareThreads(int minSpareThreads) {
-			this.minSpareThreads = minSpareThreads;
-		}
-
-		public int getMaxHttpPostSize() {
-			return this.maxHttpPostSize;
-		}
-
-		public void setMaxHttpPostSize(int maxHttpPostSize) {
-			this.maxHttpPostSize = maxHttpPostSize;
-		}
+		/**
+		 * Maximum number of parameters (GET plus POST) that will be automatically parsed
+		 * by the container. A value of less than 0 means no limit.
+		 */
+		private int maxParameterCount = 10000;
 
 		public Accesslog getAccesslog() {
 			return this.accesslog;
+		}
+
+		public Threads getThreads() {
+			return this.threads;
 		}
 
 		public Duration getBackgroundProcessorDelay() {
@@ -482,38 +543,6 @@ public class ServerProperties {
 			this.basedir = basedir;
 		}
 
-		public String getInternalProxies() {
-			return this.internalProxies;
-		}
-
-		public void setInternalProxies(String internalProxies) {
-			this.internalProxies = internalProxies;
-		}
-
-		public String getProtocolHeader() {
-			return this.protocolHeader;
-		}
-
-		public void setProtocolHeader(String protocolHeader) {
-			this.protocolHeader = protocolHeader;
-		}
-
-		public String getProtocolHeaderHttpsValue() {
-			return this.protocolHeaderHttpsValue;
-		}
-
-		public void setProtocolHeaderHttpsValue(String protocolHeaderHttpsValue) {
-			this.protocolHeaderHttpsValue = protocolHeaderHttpsValue;
-		}
-
-		public String getPortHeader() {
-			return this.portHeader;
-		}
-
-		public void setPortHeader(String portHeader) {
-			this.portHeader = portHeader;
-		}
-
 		public Boolean getRedirectContextRoot() {
 			return this.redirectContextRoot;
 		}
@@ -522,20 +551,12 @@ public class ServerProperties {
 			this.redirectContextRoot = redirectContextRoot;
 		}
 
-		public Boolean getUseRelativeRedirects() {
+		public boolean isUseRelativeRedirects() {
 			return this.useRelativeRedirects;
 		}
 
-		public void setUseRelativeRedirects(Boolean useRelativeRedirects) {
+		public void setUseRelativeRedirects(boolean useRelativeRedirects) {
 			this.useRelativeRedirects = useRelativeRedirects;
-		}
-
-		public String getRemoteIpHeader() {
-			return this.remoteIpHeader;
-		}
-
-		public void setRemoteIpHeader(String remoteIpHeader) {
-			this.remoteIpHeader = remoteIpHeader;
 		}
 
 		public Charset getUriEncoding() {
@@ -554,12 +575,12 @@ public class ServerProperties {
 			this.maxConnections = maxConnections;
 		}
 
-		public int getMaxHttpHeaderSize() {
-			return this.maxHttpHeaderSize;
+		public DataSize getMaxSwallowSize() {
+			return this.maxSwallowSize;
 		}
 
-		public void setMaxHttpHeaderSize(int maxHttpHeaderSize) {
-			this.maxHttpHeaderSize = maxHttpHeaderSize;
+		public void setMaxSwallowSize(DataSize maxSwallowSize) {
+			this.maxSwallowSize = maxSwallowSize;
 		}
 
 		public int getAcceptCount() {
@@ -570,6 +591,30 @@ public class ServerProperties {
 			this.acceptCount = acceptCount;
 		}
 
+		public int getProcessorCache() {
+			return this.processorCache;
+		}
+
+		public void setProcessorCache(int processorCache) {
+			this.processorCache = processorCache;
+		}
+
+		public Duration getKeepAliveTimeout() {
+			return this.keepAliveTimeout;
+		}
+
+		public void setKeepAliveTimeout(Duration keepAliveTimeout) {
+			this.keepAliveTimeout = keepAliveTimeout;
+		}
+
+		public int getMaxKeepAliveRequests() {
+			return this.maxKeepAliveRequests;
+		}
+
+		public void setMaxKeepAliveRequests(int maxKeepAliveRequests) {
+			this.maxKeepAliveRequests = maxKeepAliveRequests;
+		}
+
 		public List<String> getAdditionalTldSkipPatterns() {
 			return this.additionalTldSkipPatterns;
 		}
@@ -578,8 +623,64 @@ public class ServerProperties {
 			this.additionalTldSkipPatterns = additionalTldSkipPatterns;
 		}
 
+		public List<Character> getRelaxedPathChars() {
+			return this.relaxedPathChars;
+		}
+
+		public void setRelaxedPathChars(List<Character> relaxedPathChars) {
+			this.relaxedPathChars = relaxedPathChars;
+		}
+
+		public List<Character> getRelaxedQueryChars() {
+			return this.relaxedQueryChars;
+		}
+
+		public void setRelaxedQueryChars(List<Character> relaxedQueryChars) {
+			this.relaxedQueryChars = relaxedQueryChars;
+		}
+
+		public Duration getConnectionTimeout() {
+			return this.connectionTimeout;
+		}
+
+		public void setConnectionTimeout(Duration connectionTimeout) {
+			this.connectionTimeout = connectionTimeout;
+		}
+
 		public Resource getResource() {
 			return this.resource;
+		}
+
+		public Mbeanregistry getMbeanregistry() {
+			return this.mbeanregistry;
+		}
+
+		public Remoteip getRemoteip() {
+			return this.remoteip;
+		}
+
+		public DataSize getMaxHttpResponseHeaderSize() {
+			return this.maxHttpResponseHeaderSize;
+		}
+
+		public void setMaxHttpResponseHeaderSize(DataSize maxHttpResponseHeaderSize) {
+			this.maxHttpResponseHeaderSize = maxHttpResponseHeaderSize;
+		}
+
+		public DataSize getMaxHttpFormPostSize() {
+			return this.maxHttpFormPostSize;
+		}
+
+		public void setMaxHttpFormPostSize(DataSize maxHttpFormPostSize) {
+			this.maxHttpFormPostSize = maxHttpFormPostSize;
+		}
+
+		public int getMaxParameterCount() {
+			return this.maxParameterCount;
+		}
+
+		public void setMaxParameterCount(int maxParameterCount) {
+			this.maxParameterCount = maxParameterCount;
 		}
 
 		/**
@@ -591,6 +692,18 @@ public class ServerProperties {
 			 * Enable access log.
 			 */
 			private boolean enabled = false;
+
+			/**
+			 * Whether logging of the request will only be enabled if
+			 * "ServletRequest.getAttribute(conditionIf)" does not yield null.
+			 */
+			private String conditionIf;
+
+			/**
+			 * Whether logging of the request will only be enabled if
+			 * "ServletRequest.getAttribute(conditionUnless)" yield null.
+			 */
+			private String conditionUnless;
 
 			/**
 			 * Format pattern for access logs.
@@ -614,6 +727,24 @@ public class ServerProperties {
 			private String suffix = ".log";
 
 			/**
+			 * Character set used by the log file. Default to the system default character
+			 * set.
+			 */
+			private String encoding;
+
+			/**
+			 * Locale used to format timestamps in log entries and in log file name
+			 * suffix. Default to the default locale of the Java process.
+			 */
+			private String locale;
+
+			/**
+			 * Whether to check for log file existence so it can be recreated if an
+			 * external process has renamed it.
+			 */
+			private boolean checkExists = false;
+
+			/**
 			 * Whether to enable access log rotation.
 			 */
 			private boolean rotate = true;
@@ -622,7 +753,12 @@ public class ServerProperties {
 			 * Whether to defer inclusion of the date stamp in the file name until rotate
 			 * time.
 			 */
-			private boolean renameOnRotate;
+			private boolean renameOnRotate = false;
+
+			/**
+			 * Number of days to retain the access log files before they are removed.
+			 */
+			private int maxDays = -1;
 
 			/**
 			 * Date format to place in the log file name.
@@ -630,10 +766,15 @@ public class ServerProperties {
 			private String fileDateFormat = ".yyyy-MM-dd";
 
 			/**
+			 * Whether to use IPv6 canonical representation format as defined by RFC 5952.
+			 */
+			private boolean ipv6Canonical = false;
+
+			/**
 			 * Set request attributes for the IP address, Hostname, protocol, and port
 			 * used for the request.
 			 */
-			private boolean requestAttributesEnabled;
+			private boolean requestAttributesEnabled = false;
 
 			/**
 			 * Whether to buffer output such that it is flushed only periodically.
@@ -646,6 +787,22 @@ public class ServerProperties {
 
 			public void setEnabled(boolean enabled) {
 				this.enabled = enabled;
+			}
+
+			public String getConditionIf() {
+				return this.conditionIf;
+			}
+
+			public void setConditionIf(String conditionIf) {
+				this.conditionIf = conditionIf;
+			}
+
+			public String getConditionUnless() {
+				return this.conditionUnless;
+			}
+
+			public void setConditionUnless(String conditionUnless) {
+				this.conditionUnless = conditionUnless;
 			}
 
 			public String getPattern() {
@@ -680,6 +837,30 @@ public class ServerProperties {
 				this.suffix = suffix;
 			}
 
+			public String getEncoding() {
+				return this.encoding;
+			}
+
+			public void setEncoding(String encoding) {
+				this.encoding = encoding;
+			}
+
+			public String getLocale() {
+				return this.locale;
+			}
+
+			public void setLocale(String locale) {
+				this.locale = locale;
+			}
+
+			public boolean isCheckExists() {
+				return this.checkExists;
+			}
+
+			public void setCheckExists(boolean checkExists) {
+				this.checkExists = checkExists;
+			}
+
 			public boolean isRotate() {
 				return this.rotate;
 			}
@@ -696,12 +877,28 @@ public class ServerProperties {
 				this.renameOnRotate = renameOnRotate;
 			}
 
+			public int getMaxDays() {
+				return this.maxDays;
+			}
+
+			public void setMaxDays(int maxDays) {
+				this.maxDays = maxDays;
+			}
+
 			public String getFileDateFormat() {
 				return this.fileDateFormat;
 			}
 
 			public void setFileDateFormat(String fileDateFormat) {
 				this.fileDateFormat = fileDateFormat;
+			}
+
+			public boolean isIpv6Canonical() {
+				return this.ipv6Canonical;
+			}
+
+			public void setIpv6Canonical(boolean ipv6Canonical) {
+				this.ipv6Canonical = ipv6Canonical;
 			}
 
 			public boolean isRequestAttributesEnabled() {
@@ -723,14 +920,76 @@ public class ServerProperties {
 		}
 
 		/**
+		 * Tomcat thread properties.
+		 */
+		public static class Threads {
+
+			/**
+			 * Maximum amount of worker threads. Doesn't have an effect if virtual threads
+			 * are enabled.
+			 */
+			private int max = 200;
+
+			/**
+			 * Minimum amount of worker threads. Doesn't have an effect if virtual threads
+			 * are enabled.
+			 */
+			private int minSpare = 10;
+
+			/**
+			 * Maximum capacity of the thread pool's backing queue. This setting only has
+			 * an effect if the value is greater than 0.
+			 */
+			private int maxQueueCapacity = 2147483647;
+
+			public int getMax() {
+				return this.max;
+			}
+
+			public void setMax(int max) {
+				this.max = max;
+			}
+
+			public int getMinSpare() {
+				return this.minSpare;
+			}
+
+			public void setMinSpare(int minSpare) {
+				this.minSpare = minSpare;
+			}
+
+			public int getMaxQueueCapacity() {
+				return this.maxQueueCapacity;
+			}
+
+			public void setMaxQueueCapacity(int maxQueueCapacity) {
+				this.maxQueueCapacity = maxQueueCapacity;
+			}
+
+		}
+
+		/**
 		 * Tomcat static resource properties.
 		 */
 		public static class Resource {
 
 			/**
+			 * Whether static resource caching is permitted for this web application.
+			 */
+			private boolean allowCaching = true;
+
+			/**
 			 * Time-to-live of the static resource cache.
 			 */
 			private Duration cacheTtl;
+
+			public boolean isAllowCaching() {
+				return this.allowCaching;
+			}
+
+			public void setAllowCaching(boolean allowCaching) {
+				this.allowCaching = allowCaching;
+			}
 
 			public Duration getCacheTtl() {
 				return this.cacheTtl;
@@ -738,6 +997,132 @@ public class ServerProperties {
 
 			public void setCacheTtl(Duration cacheTtl) {
 				this.cacheTtl = cacheTtl;
+			}
+
+		}
+
+		public static class Mbeanregistry {
+
+			/**
+			 * Whether Tomcat's MBean Registry should be enabled.
+			 */
+			private boolean enabled;
+
+			public boolean isEnabled() {
+				return this.enabled;
+			}
+
+			public void setEnabled(boolean enabled) {
+				this.enabled = enabled;
+			}
+
+		}
+
+		public static class Remoteip {
+
+			/**
+			 * Regular expression that matches proxies that are to be trusted.
+			 */
+			private String internalProxies = "10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|" // 10/8
+					+ "192\\.168\\.\\d{1,3}\\.\\d{1,3}|" // 192.168/16
+					+ "169\\.254\\.\\d{1,3}\\.\\d{1,3}|" // 169.254/16
+					+ "127\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|" // 127/8
+					+ "100\\.6[4-9]{1}\\.\\d{1,3}\\.\\d{1,3}|" // 100.64.0.0/10
+					+ "100\\.[7-9]{1}\\d{1}\\.\\d{1,3}\\.\\d{1,3}|" // 100.64.0.0/10
+					+ "100\\.1[0-1]{1}\\d{1}\\.\\d{1,3}\\.\\d{1,3}|" // 100.64.0.0/10
+					+ "100\\.12[0-7]{1}\\.\\d{1,3}\\.\\d{1,3}|" // 100.64.0.0/10
+					+ "172\\.1[6-9]{1}\\.\\d{1,3}\\.\\d{1,3}|" // 172.16/12
+					+ "172\\.2[0-9]{1}\\.\\d{1,3}\\.\\d{1,3}|" // 172.16/12
+					+ "172\\.3[0-1]{1}\\.\\d{1,3}\\.\\d{1,3}|" // 172.16/12
+					+ "0:0:0:0:0:0:0:1|::1";
+
+			/**
+			 * Header that holds the incoming protocol, usually named "X-Forwarded-Proto".
+			 */
+			private String protocolHeader;
+
+			/**
+			 * Value of the protocol header indicating whether the incoming request uses
+			 * SSL.
+			 */
+			private String protocolHeaderHttpsValue = "https";
+
+			/**
+			 * Name of the HTTP header from which the remote host is extracted.
+			 */
+			private String hostHeader = "X-Forwarded-Host";
+
+			/**
+			 * Name of the HTTP header used to override the original port value.
+			 */
+			private String portHeader = "X-Forwarded-Port";
+
+			/**
+			 * Name of the HTTP header from which the remote IP is extracted. For
+			 * instance, 'X-FORWARDED-FOR'.
+			 */
+			private String remoteIpHeader;
+
+			/**
+			 * Regular expression defining proxies that are trusted when they appear in
+			 * the "remote-ip-header" header.
+			 */
+			private String trustedProxies;
+
+			public String getInternalProxies() {
+				return this.internalProxies;
+			}
+
+			public void setInternalProxies(String internalProxies) {
+				this.internalProxies = internalProxies;
+			}
+
+			public String getProtocolHeader() {
+				return this.protocolHeader;
+			}
+
+			public void setProtocolHeader(String protocolHeader) {
+				this.protocolHeader = protocolHeader;
+			}
+
+			public String getProtocolHeaderHttpsValue() {
+				return this.protocolHeaderHttpsValue;
+			}
+
+			public String getHostHeader() {
+				return this.hostHeader;
+			}
+
+			public void setHostHeader(String hostHeader) {
+				this.hostHeader = hostHeader;
+			}
+
+			public void setProtocolHeaderHttpsValue(String protocolHeaderHttpsValue) {
+				this.protocolHeaderHttpsValue = protocolHeaderHttpsValue;
+			}
+
+			public String getPortHeader() {
+				return this.portHeader;
+			}
+
+			public void setPortHeader(String portHeader) {
+				this.portHeader = portHeader;
+			}
+
+			public String getRemoteIpHeader() {
+				return this.remoteIpHeader;
+			}
+
+			public void setRemoteIpHeader(String remoteIpHeader) {
+				this.remoteIpHeader = remoteIpHeader;
+			}
+
+			public String getTrustedProxies() {
+				return this.trustedProxies;
+			}
+
+			public void setTrustedProxies(String trustedProxies) {
+				this.trustedProxies = trustedProxies;
 			}
 
 		}
@@ -755,46 +1140,82 @@ public class ServerProperties {
 		private final Accesslog accesslog = new Accesslog();
 
 		/**
-		 * Maximum size, in bytes, of the HTTP post or put content.
+		 * Thread related configuration.
 		 */
-		private int maxHttpPostSize = 0; // bytes
+		private final Threads threads = new Threads();
 
 		/**
-		 * Number of acceptor threads to use.
+		 * Maximum size of the form content in any HTTP post request.
 		 */
-		private Integer acceptors;
+		private DataSize maxHttpFormPostSize = DataSize.ofBytes(200000);
 
 		/**
-		 * Number of selector threads to use.
+		 * Maximum number of form keys.
 		 */
-		private Integer selectors;
+		private int maxFormKeys = 1000;
+
+		/**
+		 * Time that the connection can be idle before it is closed.
+		 */
+		private Duration connectionIdleTimeout;
+
+		/**
+		 * Maximum size of the HTTP response header.
+		 */
+		private DataSize maxHttpResponseHeaderSize = DataSize.ofKilobytes(8);
+
+		/**
+		 * Maximum number of connections that the server accepts and processes at any
+		 * given time.
+		 */
+		private int maxConnections = -1;
 
 		public Accesslog getAccesslog() {
 			return this.accesslog;
 		}
 
-		public int getMaxHttpPostSize() {
-			return this.maxHttpPostSize;
+		public Threads getThreads() {
+			return this.threads;
 		}
 
-		public void setMaxHttpPostSize(int maxHttpPostSize) {
-			this.maxHttpPostSize = maxHttpPostSize;
+		public DataSize getMaxHttpFormPostSize() {
+			return this.maxHttpFormPostSize;
 		}
 
-		public Integer getAcceptors() {
-			return this.acceptors;
+		public void setMaxHttpFormPostSize(DataSize maxHttpFormPostSize) {
+			this.maxHttpFormPostSize = maxHttpFormPostSize;
 		}
 
-		public void setAcceptors(Integer acceptors) {
-			this.acceptors = acceptors;
+		public int getMaxFormKeys() {
+			return this.maxFormKeys;
 		}
 
-		public Integer getSelectors() {
-			return this.selectors;
+		public void setMaxFormKeys(int maxFormKeys) {
+			this.maxFormKeys = maxFormKeys;
 		}
 
-		public void setSelectors(Integer selectors) {
-			this.selectors = selectors;
+		public Duration getConnectionIdleTimeout() {
+			return this.connectionIdleTimeout;
+		}
+
+		public void setConnectionIdleTimeout(Duration connectionIdleTimeout) {
+			this.connectionIdleTimeout = connectionIdleTimeout;
+		}
+
+		public DataSize getMaxHttpResponseHeaderSize() {
+			return this.maxHttpResponseHeaderSize;
+		}
+
+		public void setMaxHttpResponseHeaderSize(DataSize maxHttpResponseHeaderSize) {
+			this.maxHttpResponseHeaderSize = maxHttpResponseHeaderSize;
+		}
+
+		public int getMaxConnections() {
+			return this.maxConnections;
+		}
+
+		public void setMaxConnections(int maxConnections) {
+			this.maxConnections = maxConnections;
 		}
 
 		/**
@@ -806,6 +1227,17 @@ public class ServerProperties {
 			 * Enable access log.
 			 */
 			private boolean enabled = false;
+
+			/**
+			 * Log format.
+			 */
+			private FORMAT format = FORMAT.NCSA;
+
+			/**
+			 * Custom log format, see org.eclipse.jetty.server.CustomRequestLog. If
+			 * defined, overrides the "format" configuration key.
+			 */
+			private String customFormat;
 
 			/**
 			 * Log filename. If not specified, logs redirect to "System.err".
@@ -828,39 +1260,9 @@ public class ServerProperties {
 			private boolean append;
 
 			/**
-			 * Enable extended NCSA format.
+			 * Request paths that should not be logged.
 			 */
-			private boolean extendedFormat;
-
-			/**
-			 * Timestamp format of the request log.
-			 */
-			private String dateFormat = "dd/MMM/yyyy:HH:mm:ss Z";
-
-			/**
-			 * Locale of the request log.
-			 */
-			private Locale locale;
-
-			/**
-			 * Timezone of the request log.
-			 */
-			private TimeZone timeZone = TimeZone.getTimeZone("GMT");
-
-			/**
-			 * Enable logging of the request cookies.
-			 */
-			private boolean logCookies;
-
-			/**
-			 * Enable logging of the request hostname.
-			 */
-			private boolean logServer;
-
-			/**
-			 * Enable logging of request processing time.
-			 */
-			private boolean logLatency;
+			private List<String> ignorePaths;
 
 			public boolean isEnabled() {
 				return this.enabled;
@@ -868,6 +1270,22 @@ public class ServerProperties {
 
 			public void setEnabled(boolean enabled) {
 				this.enabled = enabled;
+			}
+
+			public FORMAT getFormat() {
+				return this.format;
+			}
+
+			public void setFormat(FORMAT format) {
+				this.format = format;
+			}
+
+			public String getCustomFormat() {
+				return this.customFormat;
+			}
+
+			public void setCustomFormat(String customFormat) {
+				this.customFormat = customFormat;
 			}
 
 			public String getFilename() {
@@ -902,61 +1320,222 @@ public class ServerProperties {
 				this.append = append;
 			}
 
-			public boolean isExtendedFormat() {
-				return this.extendedFormat;
+			public List<String> getIgnorePaths() {
+				return this.ignorePaths;
 			}
 
-			public void setExtendedFormat(boolean extendedFormat) {
-				this.extendedFormat = extendedFormat;
+			public void setIgnorePaths(List<String> ignorePaths) {
+				this.ignorePaths = ignorePaths;
 			}
 
-			public String getDateFormat() {
-				return this.dateFormat;
+			/**
+			 * Log format for Jetty access logs.
+			 */
+			public enum FORMAT {
+
+				/**
+				 * NCSA format, as defined in CustomRequestLog#NCSA_FORMAT.
+				 */
+				NCSA,
+
+				/**
+				 * Extended NCSA format, as defined in
+				 * CustomRequestLog#EXTENDED_NCSA_FORMAT.
+				 */
+				EXTENDED_NCSA
+
 			}
 
-			public void setDateFormat(String dateFormat) {
-				this.dateFormat = dateFormat;
+		}
+
+		/**
+		 * Jetty thread properties.
+		 */
+		public static class Threads {
+
+			/**
+			 * Number of acceptor threads to use. When the value is -1, the default, the
+			 * number of acceptors is derived from the operating environment.
+			 */
+			private Integer acceptors = -1;
+
+			/**
+			 * Number of selector threads to use. When the value is -1, the default, the
+			 * number of selectors is derived from the operating environment.
+			 */
+			private Integer selectors = -1;
+
+			/**
+			 * Maximum number of threads. Doesn't have an effect if virtual threads are
+			 * enabled.
+			 */
+			private Integer max = 200;
+
+			/**
+			 * Minimum number of threads. Doesn't have an effect if virtual threads are
+			 * enabled.
+			 */
+			private Integer min = 8;
+
+			/**
+			 * Maximum capacity of the thread pool's backing queue. A default is computed
+			 * based on the threading configuration.
+			 */
+			private Integer maxQueueCapacity;
+
+			/**
+			 * Maximum thread idle time.
+			 */
+			private Duration idleTimeout = Duration.ofMillis(60000);
+
+			public Integer getAcceptors() {
+				return this.acceptors;
 			}
 
-			public Locale getLocale() {
-				return this.locale;
+			public void setAcceptors(Integer acceptors) {
+				this.acceptors = acceptors;
 			}
 
-			public void setLocale(Locale locale) {
-				this.locale = locale;
+			public Integer getSelectors() {
+				return this.selectors;
 			}
 
-			public TimeZone getTimeZone() {
-				return this.timeZone;
+			public void setSelectors(Integer selectors) {
+				this.selectors = selectors;
 			}
 
-			public void setTimeZone(TimeZone timeZone) {
-				this.timeZone = timeZone;
+			public void setMin(Integer min) {
+				this.min = min;
 			}
 
-			public boolean isLogCookies() {
-				return this.logCookies;
+			public Integer getMin() {
+				return this.min;
 			}
 
-			public void setLogCookies(boolean logCookies) {
-				this.logCookies = logCookies;
+			public void setMax(Integer max) {
+				this.max = max;
 			}
 
-			public boolean isLogServer() {
-				return this.logServer;
+			public Integer getMax() {
+				return this.max;
 			}
 
-			public void setLogServer(boolean logServer) {
-				this.logServer = logServer;
+			public Integer getMaxQueueCapacity() {
+				return this.maxQueueCapacity;
 			}
 
-			public boolean isLogLatency() {
-				return this.logLatency;
+			public void setMaxQueueCapacity(Integer maxQueueCapacity) {
+				this.maxQueueCapacity = maxQueueCapacity;
 			}
 
-			public void setLogLatency(boolean logLatency) {
-				this.logLatency = logLatency;
+			public void setIdleTimeout(Duration idleTimeout) {
+				this.idleTimeout = idleTimeout;
 			}
+
+			public Duration getIdleTimeout() {
+				return this.idleTimeout;
+			}
+
+		}
+
+	}
+
+	/**
+	 * Netty properties.
+	 */
+	public static class Netty {
+
+		/**
+		 * Connection timeout of the Netty channel.
+		 */
+		private Duration connectionTimeout;
+
+		/**
+		 * Maximum content length of an H2C upgrade request.
+		 */
+		private DataSize h2cMaxContentLength = DataSize.ofBytes(0);
+
+		/**
+		 * Initial buffer size for HTTP request decoding.
+		 */
+		private DataSize initialBufferSize = DataSize.ofBytes(128);
+
+		/**
+		 * Maximum length that can be decoded for an HTTP request's initial line.
+		 */
+		private DataSize maxInitialLineLength = DataSize.ofKilobytes(4);
+
+		/**
+		 * Maximum number of requests that can be made per connection. By default, a
+		 * connection serves unlimited number of requests.
+		 */
+		private Integer maxKeepAliveRequests;
+
+		/**
+		 * Whether to validate headers when decoding requests.
+		 */
+		private boolean validateHeaders = true;
+
+		/**
+		 * Idle timeout of the Netty channel. When not specified, an infinite timeout is
+		 * used.
+		 */
+		private Duration idleTimeout;
+
+		public Duration getConnectionTimeout() {
+			return this.connectionTimeout;
+		}
+
+		public void setConnectionTimeout(Duration connectionTimeout) {
+			this.connectionTimeout = connectionTimeout;
+		}
+
+		public DataSize getH2cMaxContentLength() {
+			return this.h2cMaxContentLength;
+		}
+
+		public void setH2cMaxContentLength(DataSize h2cMaxContentLength) {
+			this.h2cMaxContentLength = h2cMaxContentLength;
+		}
+
+		public DataSize getInitialBufferSize() {
+			return this.initialBufferSize;
+		}
+
+		public void setInitialBufferSize(DataSize initialBufferSize) {
+			this.initialBufferSize = initialBufferSize;
+		}
+
+		public DataSize getMaxInitialLineLength() {
+			return this.maxInitialLineLength;
+		}
+
+		public void setMaxInitialLineLength(DataSize maxInitialLineLength) {
+			this.maxInitialLineLength = maxInitialLineLength;
+		}
+
+		public Integer getMaxKeepAliveRequests() {
+			return this.maxKeepAliveRequests;
+		}
+
+		public void setMaxKeepAliveRequests(Integer maxKeepAliveRequests) {
+			this.maxKeepAliveRequests = maxKeepAliveRequests;
+		}
+
+		public boolean isValidateHeaders() {
+			return this.validateHeaders;
+		}
+
+		public void setValidateHeaders(boolean validateHeaders) {
+			this.validateHeaders = validateHeaders;
+		}
+
+		public Duration getIdleTimeout() {
+			return this.idleTimeout;
+		}
+
+		public void setIdleTimeout(Duration idleTimeout) {
+			this.idleTimeout = idleTimeout;
 		}
 
 	}
@@ -967,27 +1546,20 @@ public class ServerProperties {
 	public static class Undertow {
 
 		/**
-		 * Maximum size, in bytes, of the HTTP post content.
+		 * Maximum size of the HTTP post content. When the value is -1, the default, the
+		 * size is unlimited.
 		 */
-		private long maxHttpPostSize = 0; // bytes
+		private DataSize maxHttpPostSize = DataSize.ofBytes(-1);
 
 		/**
-		 * Size of each buffer, in bytes.
+		 * Size of each buffer. The default is derived from the maximum amount of memory
+		 * that is available to the JVM.
 		 */
-		private Integer bufferSize;
+		private DataSize bufferSize;
 
 		/**
-		 * Number of I/O threads to create for the worker.
-		 */
-		private Integer ioThreads;
-
-		/**
-		 * Number of worker threads.
-		 */
-		private Integer workerThreads;
-
-		/**
-		 * Whether to allocate buffers outside the Java heap.
+		 * Whether to allocate buffers outside the Java heap. The default is derived from
+		 * the maximum amount of memory that is available to the JVM.
 		 */
 		private Boolean directBuffers;
 
@@ -996,38 +1568,92 @@ public class ServerProperties {
 		 */
 		private boolean eagerFilterInit = true;
 
+		/**
+		 * Maximum number of query or path parameters that are allowed. This limit exists
+		 * to prevent hash collision based DOS attacks.
+		 */
+		private int maxParameters = UndertowOptions.DEFAULT_MAX_PARAMETERS;
+
+		/**
+		 * Maximum number of headers that are allowed. This limit exists to prevent hash
+		 * collision based DOS attacks.
+		 */
+		private int maxHeaders = UndertowOptions.DEFAULT_MAX_HEADERS;
+
+		/**
+		 * Maximum number of cookies that are allowed. This limit exists to prevent hash
+		 * collision based DOS attacks.
+		 */
+		private int maxCookies = 200;
+
+		/**
+		 * Whether the server should decode percent encoded slash characters. Enabling
+		 * encoded slashes can have security implications due to different servers
+		 * interpreting the slash differently. Only enable this if you have a legacy
+		 * application that requires it. Has no effect when server.undertow.decode-slash
+		 * is set.
+		 */
+		private boolean allowEncodedSlash = false;
+
+		/**
+		 * Whether encoded slash characters (%2F) should be decoded. Decoding can cause
+		 * security problems if a front-end proxy does not perform the same decoding. Only
+		 * enable this if you have a legacy application that requires it. When set,
+		 * server.undertow.allow-encoded-slash has no effect.
+		 */
+		private Boolean decodeSlash;
+
+		/**
+		 * Whether the URL should be decoded. When disabled, percent-encoded characters in
+		 * the URL will be left as-is.
+		 */
+		private boolean decodeUrl = true;
+
+		/**
+		 * Charset used to decode URLs.
+		 */
+		private Charset urlCharset = StandardCharsets.UTF_8;
+
+		/**
+		 * Whether the 'Connection: keep-alive' header should be added to all responses,
+		 * even if not required by the HTTP specification.
+		 */
+		private boolean alwaysSetKeepAlive = true;
+
+		/**
+		 * Amount of time a connection can sit idle without processing a request, before
+		 * it is closed by the server.
+		 */
+		private Duration noRequestTimeout;
+
+		/**
+		 * Whether to preserve the path of a request when it is forwarded.
+		 */
+		private boolean preservePathOnForward = false;
+
 		private final Accesslog accesslog = new Accesslog();
 
-		public long getMaxHttpPostSize() {
+		/**
+		 * Thread related configuration.
+		 */
+		private final Threads threads = new Threads();
+
+		private final Options options = new Options();
+
+		public DataSize getMaxHttpPostSize() {
 			return this.maxHttpPostSize;
 		}
 
-		public void setMaxHttpPostSize(long maxHttpPostSize) {
+		public void setMaxHttpPostSize(DataSize maxHttpPostSize) {
 			this.maxHttpPostSize = maxHttpPostSize;
 		}
 
-		public Integer getBufferSize() {
+		public DataSize getBufferSize() {
 			return this.bufferSize;
 		}
 
-		public void setBufferSize(Integer bufferSize) {
+		public void setBufferSize(DataSize bufferSize) {
 			this.bufferSize = bufferSize;
-		}
-
-		public Integer getIoThreads() {
-			return this.ioThreads;
-		}
-
-		public void setIoThreads(Integer ioThreads) {
-			this.ioThreads = ioThreads;
-		}
-
-		public Integer getWorkerThreads() {
-			return this.workerThreads;
-		}
-
-		public void setWorkerThreads(Integer workerThreads) {
-			this.workerThreads = workerThreads;
 		}
 
 		public Boolean getDirectBuffers() {
@@ -1046,8 +1672,99 @@ public class ServerProperties {
 			this.eagerFilterInit = eagerFilterInit;
 		}
 
+		public int getMaxParameters() {
+			return this.maxParameters;
+		}
+
+		public void setMaxParameters(Integer maxParameters) {
+			this.maxParameters = maxParameters;
+		}
+
+		public int getMaxHeaders() {
+			return this.maxHeaders;
+		}
+
+		public void setMaxHeaders(int maxHeaders) {
+			this.maxHeaders = maxHeaders;
+		}
+
+		public Integer getMaxCookies() {
+			return this.maxCookies;
+		}
+
+		public void setMaxCookies(Integer maxCookies) {
+			this.maxCookies = maxCookies;
+		}
+
+		@DeprecatedConfigurationProperty(replacement = "server.undertow.decode-slash", since = "3.0.3")
+		@Deprecated(forRemoval = true, since = "3.0.3")
+		public boolean isAllowEncodedSlash() {
+			return this.allowEncodedSlash;
+		}
+
+		@Deprecated(forRemoval = true, since = "3.0.3")
+		public void setAllowEncodedSlash(boolean allowEncodedSlash) {
+			this.allowEncodedSlash = allowEncodedSlash;
+		}
+
+		public Boolean getDecodeSlash() {
+			return this.decodeSlash;
+		}
+
+		public void setDecodeSlash(Boolean decodeSlash) {
+			this.decodeSlash = decodeSlash;
+		}
+
+		public boolean isDecodeUrl() {
+			return this.decodeUrl;
+		}
+
+		public void setDecodeUrl(Boolean decodeUrl) {
+			this.decodeUrl = decodeUrl;
+		}
+
+		public Charset getUrlCharset() {
+			return this.urlCharset;
+		}
+
+		public void setUrlCharset(Charset urlCharset) {
+			this.urlCharset = urlCharset;
+		}
+
+		public boolean isAlwaysSetKeepAlive() {
+			return this.alwaysSetKeepAlive;
+		}
+
+		public void setAlwaysSetKeepAlive(boolean alwaysSetKeepAlive) {
+			this.alwaysSetKeepAlive = alwaysSetKeepAlive;
+		}
+
+		public Duration getNoRequestTimeout() {
+			return this.noRequestTimeout;
+		}
+
+		public void setNoRequestTimeout(Duration noRequestTimeout) {
+			this.noRequestTimeout = noRequestTimeout;
+		}
+
+		public boolean isPreservePathOnForward() {
+			return this.preservePathOnForward;
+		}
+
+		public void setPreservePathOnForward(boolean preservePathOnForward) {
+			this.preservePathOnForward = preservePathOnForward;
+		}
+
 		public Accesslog getAccesslog() {
 			return this.accesslog;
+		}
+
+		public Threads getThreads() {
+			return this.threads;
+		}
+
+		public Options getOptions() {
+			return this.options;
 		}
 
 		/**
@@ -1134,6 +1851,84 @@ public class ServerProperties {
 			}
 
 		}
+
+		/**
+		 * Undertow thread properties.
+		 */
+		public static class Threads {
+
+			/**
+			 * Number of I/O threads to create for the worker. The default is derived from
+			 * the number of available processors.
+			 */
+			private Integer io;
+
+			/**
+			 * Number of worker threads. The default is 8 times the number of I/O threads.
+			 */
+			private Integer worker;
+
+			public Integer getIo() {
+				return this.io;
+			}
+
+			public void setIo(Integer io) {
+				this.io = io;
+			}
+
+			public Integer getWorker() {
+				return this.worker;
+			}
+
+			public void setWorker(Integer worker) {
+				this.worker = worker;
+			}
+
+		}
+
+		public static class Options {
+
+			/**
+			 * Socket options as defined in org.xnio.Options.
+			 */
+			private final Map<String, String> socket = new LinkedHashMap<>();
+
+			/**
+			 * Server options as defined in io.undertow.UndertowOptions.
+			 */
+			private final Map<String, String> server = new LinkedHashMap<>();
+
+			public Map<String, String> getServer() {
+				return this.server;
+			}
+
+			public Map<String, String> getSocket() {
+				return this.socket;
+			}
+
+		}
+
+	}
+
+	/**
+	 * Strategies for supporting forward headers.
+	 */
+	public enum ForwardHeadersStrategy {
+
+		/**
+		 * Use the underlying container's native support for forwarded headers.
+		 */
+		NATIVE,
+
+		/**
+		 * Use Spring's support for handling forwarded headers.
+		 */
+		FRAMEWORK,
+
+		/**
+		 * Ignore X-Forwarded-* headers.
+		 */
+		NONE
 
 	}
 

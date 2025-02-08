@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,15 +22,13 @@ import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
-import com.fasterxml.jackson.annotation.JsonUnwrapped;
 
 import org.springframework.util.Assert;
 
 /**
- * Carries information about the health of a component or subsystem.
- * <p>
- * {@link Health} contains a {@link Status} to express the state of a component or
- * subsystem and some additional details to carry some contextual information.
+ * Carries information about the health of a component or subsystem. Extends
+ * {@link HealthComponent} so that additional contextual details about the system can be
+ * returned along with the {@link Status}.
  * <p>
  * {@link Health} instances can be created by using {@link Builder}'s fluent API. Typical
  * usage in a {@link HealthIndicator} would be:
@@ -38,19 +36,20 @@ import org.springframework.util.Assert;
  * <pre class="code">
  * try {
  * 	// do some test to determine state of component
- * 	return new Health.Builder().up().withDetail("version", "1.1.2").build();
+ * 	return Health.up().withDetail("version", "1.1.2").build();
  * }
  * catch (Exception ex) {
- * 	return new Health.Builder().down(ex).build();
+ * 	return Health.down(ex).build();
  * }
  * </pre>
  *
  * @author Christian Dupuis
  * @author Phillip Webb
+ * @author Michael Pratt
  * @since 1.1.0
  */
 @JsonInclude(Include.NON_EMPTY)
-public final class Health {
+public final class Health extends HealthComponent {
 
 	private final Status status;
 
@@ -61,16 +60,21 @@ public final class Health {
 	 * @param builder the Builder to use
 	 */
 	private Health(Builder builder) {
-		Assert.notNull(builder, "Builder must not be null");
+		Assert.notNull(builder, "'builder' must not be null");
 		this.status = builder.status;
 		this.details = Collections.unmodifiableMap(builder.details);
+	}
+
+	Health(Status status, Map<String, Object> details) {
+		this.status = status;
+		this.details = details;
 	}
 
 	/**
 	 * Return the status of the health.
 	 * @return the status (never {@code null})
 	 */
-	@JsonUnwrapped
+	@Override
 	public Status getStatus() {
 		return this.status;
 	}
@@ -79,8 +83,22 @@ public final class Health {
 	 * Return the details of the health.
 	 * @return the details (or an empty map)
 	 */
+	@JsonInclude(Include.NON_EMPTY)
 	public Map<String, Object> getDetails() {
 		return this.details;
+	}
+
+	/**
+	 * Return a new instance of this {@link Health} with all {@link #getDetails() details}
+	 * removed.
+	 * @return a new instance without details
+	 * @since 2.2.0
+	 */
+	Health withoutDetails() {
+		if (this.details.isEmpty()) {
+			return this;
+		}
+		return status(getStatus()).build();
 	}
 
 	@Override
@@ -88,8 +106,7 @@ public final class Health {
 		if (obj == this) {
 			return true;
 		}
-		if (obj != null && obj instanceof Health) {
-			Health other = (Health) obj;
+		if (obj instanceof Health other) {
 			return this.status.equals(other.status) && this.details.equals(other.details);
 		}
 		return false;
@@ -128,7 +145,7 @@ public final class Health {
 	 * @param ex the exception
 	 * @return a new {@link Builder} instance
 	 */
-	public static Builder down(Exception ex) {
+	public static Builder down(Throwable ex) {
 		return down().withException(ex);
 	}
 
@@ -173,7 +190,9 @@ public final class Health {
 
 		private Status status;
 
-		private Map<String, Object> details;
+		private final Map<String, Object> details;
+
+		private Throwable exception;
 
 		/**
 		 * Create new Builder instance.
@@ -188,7 +207,7 @@ public final class Health {
 		 * @param status the {@link Status} to use
 		 */
 		public Builder(Status status) {
-			Assert.notNull(status, "Status must not be null");
+			Assert.notNull(status, "'status' must not be null");
 			this.status = status;
 			this.details = new LinkedHashMap<>();
 		}
@@ -200,20 +219,21 @@ public final class Health {
 		 * @param details the details {@link Map} to use
 		 */
 		public Builder(Status status, Map<String, ?> details) {
-			Assert.notNull(status, "Status must not be null");
-			Assert.notNull(details, "Details must not be null");
+			Assert.notNull(status, "'status' must not be null");
+			Assert.notNull(details, "'details' must not be null");
 			this.status = status;
 			this.details = new LinkedHashMap<>(details);
 		}
 
 		/**
 		 * Record detail for given {@link Exception}.
-		 * @param ex the exception
+		 * @param exception the exception
 		 * @return this {@link Builder} instance
 		 */
-		public Builder withException(Throwable ex) {
-			Assert.notNull(ex, "Exception must not be null");
-			return withDetail("error", ex.getClass().getName() + ": " + ex.getMessage());
+		public Builder withException(Throwable exception) {
+			Assert.notNull(exception, "'exception' must not be null");
+			this.exception = exception;
+			return withDetail("error", exception.getClass().getName() + ": " + exception.getMessage());
 		}
 
 		/**
@@ -223,9 +243,22 @@ public final class Health {
 		 * @return this {@link Builder} instance
 		 */
 		public Builder withDetail(String key, Object value) {
-			Assert.notNull(key, "Key must not be null");
-			Assert.notNull(value, "Value must not be null");
+			Assert.notNull(key, "'key' must not be null");
+			Assert.notNull(value, "'value' must not be null");
 			this.details.put(key, value);
+			return this;
+		}
+
+		/**
+		 * Record details from the given {@code details} map. Keys from the given map
+		 * replace any existing keys if there are duplicates.
+		 * @param details map of details
+		 * @return this {@link Builder} instance
+		 * @since 2.1.0
+		 */
+		public Builder withDetails(Map<String, ?> details) {
+			Assert.notNull(details, "'details' must not be null");
+			this.details.putAll(details);
 			return this;
 		}
 
@@ -296,6 +329,14 @@ public final class Health {
 		 */
 		public Health build() {
 			return new Health(this);
+		}
+
+		/**
+		 * Return the {@link Exception}.
+		 * @return the exception or {@code null} if the builder has no exception
+		 */
+		Throwable getException() {
+			return this.exception;
 		}
 
 	}

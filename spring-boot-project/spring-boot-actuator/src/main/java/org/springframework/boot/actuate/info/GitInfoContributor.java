@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,7 +20,12 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Properties;
 
+import org.springframework.aot.hint.BindingReflectionHintsRegistrar;
+import org.springframework.aot.hint.RuntimeHints;
+import org.springframework.aot.hint.RuntimeHintsRegistrar;
+import org.springframework.boot.actuate.info.GitInfoContributor.GitInfoContributorRuntimeHints;
 import org.springframework.boot.info.GitProperties;
+import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.core.env.PropertiesPropertySource;
 import org.springframework.core.env.PropertySource;
 
@@ -30,6 +35,7 @@ import org.springframework.core.env.PropertySource;
  * @author Stephane Nicoll
  * @since 1.4.0
  */
+@ImportRuntimeHints(GitInfoContributorRuntimeHints.class)
 public class GitInfoContributor extends InfoPropertiesInfoContributor<GitProperties> {
 
 	public GitInfoContributor(GitProperties properties) {
@@ -64,10 +70,19 @@ public class GitInfoContributor extends InfoPropertiesInfoContributor<GitPropert
 	 */
 	@Override
 	protected void postProcessContent(Map<String, Object> content) {
-		replaceValue(getNestedMap(content, "commit"), "time",
-				getProperties().getCommitTime());
-		replaceValue(getNestedMap(content, "build"), "time",
-				getProperties().getInstant("build.time"));
+		replaceValue(getNestedMap(content, "commit"), "time", getProperties().getCommitTime());
+		replaceValue(getNestedMap(content, "build"), "time", getProperties().getInstant("build.time"));
+	}
+
+	static class GitInfoContributorRuntimeHints implements RuntimeHintsRegistrar {
+
+		private final BindingReflectionHintsRegistrar bindingRegistrar = new BindingReflectionHintsRegistrar();
+
+		@Override
+		public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
+			this.bindingRegistrar.registerReflectionHints(hints.reflection(), GitProperties.class);
+		}
+
 	}
 
 }

@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,14 +18,14 @@ package org.springframework.boot.devtools.remote.server;
 
 import java.io.IOException;
 
-import javax.servlet.Filter;
-import javax.servlet.FilterChain;
-import javax.servlet.FilterConfig;
-import javax.servlet.ServletException;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.FilterConfig;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
@@ -45,7 +45,7 @@ public class DispatcherFilter implements Filter {
 	private final Dispatcher dispatcher;
 
 	public DispatcherFilter(Dispatcher dispatcher) {
-		Assert.notNull(dispatcher, "Dispatcher must not be null");
+		Assert.notNull(dispatcher, "'dispatcher' must not be null");
 		this.dispatcher = dispatcher;
 	}
 
@@ -54,10 +54,9 @@ public class DispatcherFilter implements Filter {
 	}
 
 	@Override
-	public void doFilter(ServletRequest request, ServletResponse response,
-			FilterChain chain) throws IOException, ServletException {
-		if (request instanceof HttpServletRequest
-				&& response instanceof HttpServletResponse) {
+	public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
+			throws IOException, ServletException {
+		if (request instanceof HttpServletRequest && response instanceof HttpServletResponse) {
 			doFilter((HttpServletRequest) request, (HttpServletResponse) response, chain);
 		}
 		else {
@@ -65,8 +64,8 @@ public class DispatcherFilter implements Filter {
 		}
 	}
 
-	private void doFilter(HttpServletRequest request, HttpServletResponse response,
-			FilterChain chain) throws IOException, ServletException {
+	private void doFilter(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+			throws IOException, ServletException {
 		ServerHttpRequest serverRequest = new ServletServerHttpRequest(request);
 		ServerHttpResponse serverResponse = new ServletServerHttpResponse(response);
 		if (!this.dispatcher.handle(serverRequest, serverResponse)) {

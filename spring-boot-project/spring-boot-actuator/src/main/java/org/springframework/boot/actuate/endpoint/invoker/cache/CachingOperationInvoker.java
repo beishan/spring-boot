@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,12 +16,25 @@
 
 package org.springframework.boot.actuate.endpoint.invoker.cache;
 
+import java.security.Principal;
+import java.time.Duration;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
 
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+import org.springframework.boot.actuate.endpoint.ApiVersion;
 import org.springframework.boot.actuate.endpoint.InvocationContext;
+import org.springframework.boot.actuate.endpoint.SecurityContext;
 import org.springframework.boot.actuate.endpoint.invoke.OperationInvoker;
+import org.springframework.boot.actuate.endpoint.invoke.OperationParameter;
+import org.springframework.boot.actuate.endpoint.invoke.OperationParameters;
+import org.springframework.boot.actuate.endpoint.web.WebServerNamespace;
 import org.springframework.util.Assert;
+import org.springframework.util.ClassUtils;
+import org.springframework.util.ConcurrentReferenceHashMap;
 import org.springframework.util.ObjectUtils;
 
 /**
@@ -29,15 +42,21 @@ import org.springframework.util.ObjectUtils;
  * configurable time to live.
  *
  * @author Stephane Nicoll
+ * @author Christoph Dreis
+ * @author Phillip Webb
  * @since 2.0.0
  */
 public class CachingOperationInvoker implements OperationInvoker {
+
+	private static final boolean IS_REACTOR_PRESENT = ClassUtils.isPresent("reactor.core.publisher.Mono", null);
+
+	private static final int CACHE_CLEANUP_THRESHOLD = 40;
 
 	private final OperationInvoker invoker;
 
 	private final long timeToLive;
 
-	private volatile CachedResponse cachedResponse;
+	private final Map<CacheKey, CachedResponse> cachedResponses;
 
 	/**
 	 * Create a new instance with the target {@link OperationInvoker} to use to compute
@@ -46,9 +65,10 @@ public class CachingOperationInvoker implements OperationInvoker {
 	 * @param timeToLive the maximum time in milliseconds that a response can be cached
 	 */
 	CachingOperationInvoker(OperationInvoker invoker, long timeToLive) {
-		Assert.isTrue(timeToLive > 0, "TimeToLive must be strictly positive");
+		Assert.isTrue(timeToLive > 0, "'timeToLive' must be greater than zero");
 		this.invoker = invoker;
 		this.timeToLive = timeToLive;
+		this.cachedResponses = new ConcurrentReferenceHashMap<>();
 	}
 
 	/**
@@ -65,19 +85,36 @@ public class CachingOperationInvoker implements OperationInvoker {
 			return this.invoker.invoke(context);
 		}
 		long accessTime = System.currentTimeMillis();
-		CachedResponse cached = this.cachedResponse;
+		if (this.cachedResponses.size() > CACHE_CLEANUP_THRESHOLD) {
+			cleanExpiredCachedResponses(accessTime);
+		}
+		CacheKey cacheKey = getCacheKey(context);
+		CachedResponse cached = this.cachedResponses.get(cacheKey);
 		if (cached == null || cached.isStale(accessTime, this.timeToLive)) {
 			Object response = this.invoker.invoke(context);
-			this.cachedResponse = new CachedResponse(response, accessTime);
-			return response;
+			cached = createCachedResponse(response, accessTime);
+			this.cachedResponses.put(cacheKey, cached);
 		}
 		return cached.getResponse();
 	}
 
-	private boolean hasInput(InvocationContext context) {
-		if (context.getSecurityContext().getPrincipal() != null) {
-			return true;
+	private CacheKey getCacheKey(InvocationContext context) {
+		ApiVersion contextApiVersion = context.resolveArgument(ApiVersion.class);
+		Principal principal = context.resolveArgument(Principal.class);
+		WebServerNamespace serverNamespace = context.resolveArgument(WebServerNamespace.class);
+		return new CacheKey(contextApiVersion, principal, serverNamespace);
+	}
+
+	private void cleanExpiredCachedResponses(long accessTime) {
+		try {
+			this.cachedResponses.entrySet().removeIf((entry) -> entry.getValue().isStale(accessTime, this.timeToLive));
 		}
+		catch (Exception ex) {
+			// Ignore
+		}
+	}
+
+	private boolean hasInput(InvocationContext context) {
 		Map<String, Object> arguments = context.getArguments();
 		if (!ObjectUtils.isEmpty(arguments)) {
 			return arguments.values().stream().anyMatch(Objects::nonNull);
@@ -85,18 +122,20 @@ public class CachingOperationInvoker implements OperationInvoker {
 		return false;
 	}
 
-	/**
-	 * Apply caching configuration when appropriate to the given invoker.
-	 * @param invoker the invoker to wrap
-	 * @param timeToLive the maximum time in milliseconds that a response can be cached
-	 * @return a caching version of the invoker or the original instance if caching is not
-	 * required
-	 */
-	public static OperationInvoker apply(OperationInvoker invoker, long timeToLive) {
-		if (timeToLive > 0) {
-			return new CachingOperationInvoker(invoker, timeToLive);
+	private CachedResponse createCachedResponse(Object response, long accessTime) {
+		if (IS_REACTOR_PRESENT) {
+			return new ReactiveCachedResponse(response, accessTime, this.timeToLive);
 		}
-		return invoker;
+		return new CachedResponse(response, accessTime);
+	}
+
+	static boolean isApplicable(OperationParameters parameters) {
+		for (OperationParameter parameter : parameters) {
+			if (parameter.isMandatory() && !CacheKey.containsType(parameter.getType())) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**
@@ -114,12 +153,80 @@ public class CachingOperationInvoker implements OperationInvoker {
 			this.creationTime = creationTime;
 		}
 
-		public boolean isStale(long accessTime, long timeToLive) {
+		boolean isStale(long accessTime, long timeToLive) {
 			return (accessTime - this.creationTime) >= timeToLive;
 		}
 
-		public Object getResponse() {
+		Object getResponse() {
 			return this.response;
+		}
+
+	}
+
+	/**
+	 * {@link CachedResponse} variant used when Reactor is present.
+	 */
+	static class ReactiveCachedResponse extends CachedResponse {
+
+		ReactiveCachedResponse(Object response, long creationTime, long timeToLive) {
+			super(applyCaching(response, timeToLive), creationTime);
+		}
+
+		private static Object applyCaching(Object response, long timeToLive) {
+			if (response instanceof Mono) {
+				return ((Mono<?>) response).cache(Duration.ofMillis(timeToLive));
+			}
+			if (response instanceof Flux) {
+				return ((Flux<?>) response).cache(Duration.ofMillis(timeToLive));
+			}
+			return response;
+		}
+
+	}
+
+	private static final class CacheKey {
+
+		private static final Class<?>[] CACHEABLE_TYPES = new Class<?>[] { ApiVersion.class, SecurityContext.class,
+				WebServerNamespace.class };
+
+		private final ApiVersion apiVersion;
+
+		private final Principal principal;
+
+		private final WebServerNamespace serverNamespace;
+
+		private CacheKey(ApiVersion apiVersion, Principal principal, WebServerNamespace serverNamespace) {
+			this.principal = principal;
+			this.apiVersion = apiVersion;
+			this.serverNamespace = serverNamespace;
+		}
+
+		static boolean containsType(Class<?> type) {
+			return Arrays.stream(CacheKey.CACHEABLE_TYPES).anyMatch((c) -> c.isAssignableFrom(type));
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj) {
+				return true;
+			}
+			if (obj == null || getClass() != obj.getClass()) {
+				return false;
+			}
+			CacheKey other = (CacheKey) obj;
+			return this.apiVersion.equals(other.apiVersion)
+					&& ObjectUtils.nullSafeEquals(this.principal, other.principal)
+					&& ObjectUtils.nullSafeEquals(this.serverNamespace, other.serverNamespace);
+		}
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + this.apiVersion.hashCode();
+			result = prime * result + ObjectUtils.nullSafeHashCode(this.principal);
+			result = prime * result + ObjectUtils.nullSafeHashCode(this.serverNamespace);
+			return result;
 		}
 
 	}

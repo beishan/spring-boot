@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -45,16 +45,14 @@ class BindValidationFailureAnalyzer extends AbstractFailureAnalyzer<Throwable> {
 	}
 
 	private ExceptionDetails getBindValidationExceptionDetails(Throwable rootFailure) {
-		BindValidationException validationException = findCause(rootFailure,
-				BindValidationException.class);
+		BindValidationException validationException = findCause(rootFailure, BindValidationException.class);
 		if (validationException != null) {
-			BindException target = findCause(rootFailure, BindException.class);
-			List<ObjectError> errors = validationException.getValidationErrors()
-					.getAllErrors();
-			return new ExceptionDetails(errors, target, validationException);
+			BindException bindException = findCause(rootFailure, BindException.class);
+			List<ObjectError> errors = validationException.getValidationErrors().getAllErrors();
+			return new ExceptionDetails(errors, bindException.getTarget().getType(), validationException);
 		}
-		org.springframework.validation.BindException bindException = findCause(
-				rootFailure, org.springframework.validation.BindException.class);
+		org.springframework.validation.BindException bindException = findCause(rootFailure,
+				org.springframework.validation.BindException.class);
 		if (bindException != null) {
 			List<ObjectError> errors = bindException.getAllErrors();
 			return new ExceptionDetails(errors, bindException.getTarget(), bindException);
@@ -66,37 +64,34 @@ class BindValidationFailureAnalyzer extends AbstractFailureAnalyzer<Throwable> {
 		StringBuilder description = new StringBuilder(
 				String.format("Binding to target %s failed:%n", details.getTarget()));
 		for (ObjectError error : details.getErrors()) {
-			if (error instanceof FieldError) {
-				appendFieldError(description, (FieldError) error);
+			if (error instanceof FieldError fieldError) {
+				appendFieldError(description, fieldError);
 			}
-			description.append(
-					String.format("%n    Reason: %s%n", error.getDefaultMessage()));
+			description.append(String.format("%n    Reason: %s%n", error.getDefaultMessage()));
 		}
 		return getFailureAnalysis(description, details.getCause());
 	}
 
 	private void appendFieldError(StringBuilder description, FieldError error) {
 		Origin origin = Origin.from(error);
-		description.append(String.format("%n    Property: %s",
-				error.getObjectName() + "." + error.getField()));
-		description.append(String.format("%n    Value: %s", error.getRejectedValue()));
+		description.append(String.format("%n    Property: %s", error.getObjectName() + "." + error.getField()));
+		description.append(String.format("%n    Value: \"%s\"", error.getRejectedValue()));
 		if (origin != null) {
 			description.append(String.format("%n    Origin: %s", origin));
 		}
 	}
 
 	private FailureAnalysis getFailureAnalysis(Object description, Throwable cause) {
-		return new FailureAnalysis(description.toString(),
-				"Update your application's configuration", cause);
+		return new FailureAnalysis(description.toString(), "Update your application's configuration", cause);
 	}
 
 	private static class ExceptionDetails {
 
-		private List<ObjectError> errors;
+		private final List<ObjectError> errors;
 
-		private Object target;
+		private final Object target;
 
-		private Throwable cause;
+		private final Throwable cause;
 
 		ExceptionDetails(List<ObjectError> errors, Object target, Throwable cause) {
 			this.errors = errors;
@@ -104,15 +99,15 @@ class BindValidationFailureAnalyzer extends AbstractFailureAnalyzer<Throwable> {
 			this.cause = cause;
 		}
 
-		public Object getTarget() {
+		Object getTarget() {
 			return this.target;
 		}
 
-		public List<ObjectError> getErrors() {
+		List<ObjectError> getErrors() {
 			return this.errors;
 		}
 
-		public Throwable getCause() {
+		Throwable getCause() {
 			return this.cause;
 		}
 

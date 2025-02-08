@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -31,23 +31,12 @@ public class SystemEnvironmentOrigin implements Origin {
 	private final String property;
 
 	public SystemEnvironmentOrigin(String property) {
-		Assert.notNull(property, "Property name must not be null");
-		Assert.hasText(property, "Property name must not be empty");
+		Assert.hasText(property, "'property' must not be empty");
 		this.property = property;
 	}
 
 	public String getProperty() {
 		return this.property;
-	}
-
-	@Override
-	public String toString() {
-		return "System Environment Property \"" + this.property + "\"";
-	}
-
-	@Override
-	public int hashCode() {
-		return ObjectUtils.nullSafeHashCode(this.property);
 	}
 
 	@Override
@@ -61,4 +50,15 @@ public class SystemEnvironmentOrigin implements Origin {
 		SystemEnvironmentOrigin other = (SystemEnvironmentOrigin) obj;
 		return ObjectUtils.nullSafeEquals(this.property, other.property);
 	}
+
+	@Override
+	public int hashCode() {
+		return ObjectUtils.nullSafeHashCode(this.property);
+	}
+
+	@Override
+	public String toString() {
+		return "System Environment Property \"" + this.property + "\"";
+	}
+
 }

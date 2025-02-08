@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -38,6 +38,7 @@ import org.springframework.util.StringUtils;
  *
  * @author Andy Wilkinson
  * @author Madhura Bhave
+ * @author Phillip Webb
  */
 class BindFailureAnalyzer extends AbstractFailureAnalyzer<BindException> {
 
@@ -48,56 +49,80 @@ class BindFailureAnalyzer extends AbstractFailureAnalyzer<BindException> {
 				|| rootCause instanceof UnboundConfigurationPropertiesException) {
 			return null;
 		}
-		return analyzeGenericBindException(cause);
+		return analyzeGenericBindException(rootFailure, cause);
 	}
 
-	private FailureAnalysis analyzeGenericBindException(BindException cause) {
-		StringBuilder description = new StringBuilder(
-				String.format("%s:%n", cause.getMessage()));
+	private FailureAnalysis analyzeGenericBindException(Throwable rootFailure, BindException cause) {
+		FailureAnalysis missingParametersAnalysis = MissingParameterNamesFailureAnalyzer
+			.analyzeForMissingParameters(rootFailure);
+		StringBuilder description = new StringBuilder(String.format("%s:%n", cause.getMessage()));
 		ConfigurationProperty property = cause.getProperty();
 		buildDescription(description, property);
 		description.append(String.format("%n    Reason: %s", getMessage(cause)));
-		return getFailureAnalysis(description, cause);
+		if (missingParametersAnalysis != null) {
+			MissingParameterNamesFailureAnalyzer.appendPossibility(description);
+		}
+		return getFailureAnalysis(description.toString(), cause, missingParametersAnalysis);
 	}
 
-	private void buildDescription(StringBuilder description,
-			ConfigurationProperty property) {
+	private void buildDescription(StringBuilder description, ConfigurationProperty property) {
 		if (property != null) {
 			description.append(String.format("%n    Property: %s", property.getName()));
-			description.append(String.format("%n    Value: %s", property.getValue()));
+			description.append(String.format("%n    Value: \"%s\"", property.getValue()));
 			description.append(String.format("%n    Origin: %s", property.getOrigin()));
 		}
 	}
 
 	private String getMessage(BindException cause) {
-		if (cause.getCause() != null
-				&& StringUtils.hasText(cause.getCause().getMessage())) {
-			return cause.getCause().getMessage();
+		Throwable rootCause = getRootCause(cause.getCause());
+		ConversionFailedException conversionFailure = findCause(cause, ConversionFailedException.class);
+		if (conversionFailure != null) {
+			String message = "failed to convert " + conversionFailure.getSourceType() + " to "
+					+ conversionFailure.getTargetType();
+			if (rootCause != null) {
+				message += " (caused by " + getExceptionTypeAndMessage(rootCause) + ")";
+			}
+			return message;
 		}
-		return cause.getMessage();
+		if (rootCause != null && StringUtils.hasText(rootCause.getMessage())) {
+			return getExceptionTypeAndMessage(rootCause);
+		}
+		return getExceptionTypeAndMessage(cause);
 	}
 
-	private FailureAnalysis getFailureAnalysis(Object description, BindException cause) {
-		StringBuilder message = new StringBuilder(
-				"Update your application's configuration");
+	private Throwable getRootCause(Throwable cause) {
+		Throwable rootCause = cause;
+		while (rootCause != null && rootCause.getCause() != null) {
+			rootCause = rootCause.getCause();
+		}
+		return rootCause;
+	}
+
+	private String getExceptionTypeAndMessage(Throwable ex) {
+		String message = ex.getMessage();
+		return ex.getClass().getName() + (StringUtils.hasText(message) ? ": " + message : "");
+	}
+
+	private FailureAnalysis getFailureAnalysis(String description, BindException cause,
+			FailureAnalysis missingParametersAnalysis) {
+		StringBuilder action = new StringBuilder("Update your application's configuration");
 		Collection<String> validValues = findValidValues(cause);
 		if (!validValues.isEmpty()) {
-			message.append(String.format(". The following values are valid:%n"));
-			validValues
-					.forEach((value) -> message.append(String.format("%n    %s", value)));
+			action.append(String.format(". The following values are valid:%n"));
+			validValues.forEach((value) -> action.append(String.format("%n    %s", value)));
 		}
-		return new FailureAnalysis(description.toString(), message.toString(), cause);
+		if (missingParametersAnalysis != null) {
+			action.append(String.format("%n%n%s", missingParametersAnalysis.getAction()));
+		}
+		return new FailureAnalysis(description, action.toString(), cause);
 	}
 
 	private Collection<String> findValidValues(BindException ex) {
-		ConversionFailedException conversionFailure = findCause(ex,
-				ConversionFailedException.class);
+		ConversionFailedException conversionFailure = findCause(ex, ConversionFailedException.class);
 		if (conversionFailure != null) {
-			Object[] enumConstants = conversionFailure.getTargetType().getType()
-					.getEnumConstants();
+			Object[] enumConstants = conversionFailure.getTargetType().getType().getEnumConstants();
 			if (enumConstants != null) {
-				return Stream.of(enumConstants).map(Object::toString)
-						.collect(Collectors.toCollection(TreeSet::new));
+				return Stream.of(enumConstants).map(Object::toString).collect(Collectors.toCollection(TreeSet::new));
 			}
 		}
 		return Collections.emptySet();

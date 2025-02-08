@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,12 +17,20 @@
 package org.springframework.boot.gradle.tasks.bundling;
 
 import java.io.File;
-import java.io.IOException;
 import java.io.Serializable;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.regex.Pattern;
 
-import org.springframework.boot.loader.tools.FileUtils;
+import org.gradle.api.Project;
+import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.InputFile;
+import org.gradle.api.tasks.Optional;
+import org.gradle.api.tasks.PathSensitive;
+import org.gradle.api.tasks.PathSensitivity;
+import org.gradle.api.tasks.bundling.AbstractArchiveTask;
+
+import org.springframework.util.StringUtils;
 
 /**
  * Encapsulates the configuration of the launch script for an executable jar or war.
@@ -33,15 +41,33 @@ import org.springframework.boot.loader.tools.FileUtils;
 @SuppressWarnings("serial")
 public class LaunchScriptConfiguration implements Serializable {
 
-	private final Map<String, String> properties = new HashMap<>();
+	private static final Pattern WHITE_SPACE_PATTERN = Pattern.compile("\\s+");
+
+	private static final Pattern LINE_FEED_PATTERN = Pattern.compile("\n");
+
+	// We don't care about the order, but Gradle's configuration cache currently does.
+	// https://github.com/gradle/gradle/pull/17863
+	private final Map<String, String> properties = new TreeMap<>();
 
 	private File script;
+
+	public LaunchScriptConfiguration() {
+	}
+
+	LaunchScriptConfiguration(AbstractArchiveTask archiveTask) {
+		Project project = archiveTask.getProject();
+		String baseName = archiveTask.getArchiveBaseName().get();
+		putIfMissing(this.properties, "initInfoProvides", baseName);
+		putIfMissing(this.properties, "initInfoShortDescription", removeLineBreaks(project.getDescription()), baseName);
+		putIfMissing(this.properties, "initInfoDescription", augmentLineBreaks(project.getDescription()), baseName);
+	}
 
 	/**
 	 * Returns the properties that are applied to the launch script when it's being
 	 * including in the executable archive.
 	 * @return the properties
 	 */
+	@Input
 	public Map<String, String> getProperties() {
 		return this.properties;
 	}
@@ -60,6 +86,9 @@ public class LaunchScriptConfiguration implements Serializable {
 	 * When {@code null}, the default launch script will be used.
 	 * @return the script file
 	 */
+	@Optional
+	@InputFile
+	@PathSensitive(PathSensitivity.RELATIVE)
 	public File getScript() {
 		return this.script;
 	}
@@ -73,51 +102,22 @@ public class LaunchScriptConfiguration implements Serializable {
 		this.script = script;
 	}
 
-	@Override
-	public int hashCode() {
-		final int prime = 31;
-		int result = 1;
-		result = prime * result
-				+ ((this.properties == null) ? 0 : this.properties.hashCode());
-		result = prime * result + ((this.script == null) ? 0 : this.script.hashCode());
-		return result;
+	private String removeLineBreaks(String string) {
+		return (string != null) ? WHITE_SPACE_PATTERN.matcher(string).replaceAll(" ") : null;
 	}
 
-	@Override
-	public boolean equals(Object obj) {
-		if (this == obj) {
-			return true;
-		}
-		if (obj == null) {
-			return false;
-		}
-		if (getClass() != obj.getClass()) {
-			return false;
-		}
-		LaunchScriptConfiguration other = (LaunchScriptConfiguration) obj;
-		if (!this.properties.equals(other.properties)) {
-			return false;
-		}
-		if (this.script == null) {
-			if (other.script != null) {
-				return false;
+	private String augmentLineBreaks(String string) {
+		return (string != null) ? LINE_FEED_PATTERN.matcher(string).replaceAll("\n#  ") : null;
+	}
+
+	private void putIfMissing(Map<String, String> properties, String key, String... valueCandidates) {
+		if (!properties.containsKey(key)) {
+			for (String candidate : valueCandidates) {
+				if (StringUtils.hasLength(candidate)) {
+					properties.put(key, candidate);
+					return;
+				}
 			}
-		}
-		else if (!this.script.equals(other.script)) {
-			return false;
-		}
-		else if (!equalContents(this.script, other.script)) {
-			return false;
-		}
-		return true;
-	}
-
-	private boolean equalContents(File one, File two) {
-		try {
-			return FileUtils.sha1Hash(one).equals(FileUtils.sha1Hash(two));
-		}
-		catch (IOException ex) {
-			return false;
 		}
 	}
 

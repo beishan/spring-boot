@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +17,7 @@
 package org.springframework.boot.test.context.runner;
 
 import org.springframework.boot.test.context.assertj.AssertableReactiveWebApplicationContext;
+import org.springframework.boot.web.reactive.context.AnnotationConfigReactiveWebApplicationContext;
 import org.springframework.boot.web.reactive.context.ConfigurableReactiveWebApplicationContext;
 
 /**
@@ -25,12 +26,23 @@ import org.springframework.boot.web.reactive.context.ConfigurableReactiveWebAppl
  * @author Stephane Nicoll
  * @author Phillip Webb
  */
-public class ReactiveWebApplicationContextRunnerTests extends
+class ReactiveWebApplicationContextRunnerTests extends
 		AbstractApplicationContextRunnerTests<ReactiveWebApplicationContextRunner, ConfigurableReactiveWebApplicationContext, AssertableReactiveWebApplicationContext> {
 
 	@Override
 	protected ReactiveWebApplicationContextRunner get() {
 		return new ReactiveWebApplicationContextRunner();
+	}
+
+	@Override
+	protected ReactiveWebApplicationContextRunner getWithAdditionalContextInterface() {
+		return new ReactiveWebApplicationContextRunner(TestAnnotationConfigReactiveWebApplicationContext::new,
+				AdditionalContextInterface.class);
+	}
+
+	static class TestAnnotationConfigReactiveWebApplicationContext extends AnnotationConfigReactiveWebApplicationContext
+			implements AdditionalContextInterface {
+
 	}
 
 }

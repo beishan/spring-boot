@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -41,8 +41,8 @@ class CompressionConnectorCustomizer implements TomcatConnectorCustomizer {
 	public void customize(Connector connector) {
 		if (this.compression != null && this.compression.getEnabled()) {
 			ProtocolHandler handler = connector.getProtocolHandler();
-			if (handler instanceof AbstractHttp11Protocol) {
-				customize((AbstractHttp11Protocol<?>) handler);
+			if (handler instanceof AbstractHttp11Protocol<?> abstractHttp11Protocol) {
+				customize(abstractHttp11Protocol);
 			}
 		}
 	}
@@ -50,13 +50,23 @@ class CompressionConnectorCustomizer implements TomcatConnectorCustomizer {
 	private void customize(AbstractHttp11Protocol<?> protocol) {
 		Compression compression = this.compression;
 		protocol.setCompression("on");
-		protocol.setCompressionMinSize(compression.getMinResponseSize());
-		protocol.setCompressibleMimeType(
-				StringUtils.arrayToCommaDelimitedString(compression.getMimeTypes()));
+		protocol.setCompressionMinSize(getMinResponseSize(compression));
+		protocol.setCompressibleMimeType(getMimeTypes(compression));
 		if (this.compression.getExcludedUserAgents() != null) {
-			protocol.setNoCompressionUserAgents(StringUtils.arrayToCommaDelimitedString(
-					this.compression.getExcludedUserAgents()));
+			protocol.setNoCompressionUserAgents(getExcludedUserAgents());
 		}
+	}
+
+	private int getMinResponseSize(Compression compression) {
+		return (int) compression.getMinResponseSize().toBytes();
+	}
+
+	private String getMimeTypes(Compression compression) {
+		return StringUtils.arrayToCommaDelimitedString(compression.getMimeTypes());
+	}
+
+	private String getExcludedUserAgents() {
+		return StringUtils.arrayToCommaDelimitedString(this.compression.getExcludedUserAgents());
 	}
 
 }

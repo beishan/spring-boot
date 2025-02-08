@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,13 +23,13 @@ import java.util.Map;
 import java.util.Properties;
 
 import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.context.config.ConfigFileApplicationListener;
+import org.springframework.boot.context.config.ConfigDataEnvironmentPostProcessor;
 import org.springframework.boot.env.EnvironmentPostProcessor;
 import org.springframework.boot.json.JsonParser;
 import org.springframework.boot.json.JsonParserFactory;
+import org.springframework.boot.logging.DeferredLogFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.CommandLinePropertySource;
 import org.springframework.core.env.ConfigurableEnvironment;
@@ -40,13 +40,13 @@ import org.springframework.util.StringUtils;
 
 /**
  * An {@link EnvironmentPostProcessor} that knows where to find VCAP (a.k.a. Cloud
- * Foundry) meta data in the existing environment. It parses out the VCAP_APPLICATION and
- * VCAP_SERVICES meta data and dumps it in a form that is easily consumed by
- * {@link Environment} users. If the app is running in Cloud Foundry then both meta data
+ * Foundry) metadata in the existing environment. It parses out the VCAP_APPLICATION and
+ * VCAP_SERVICES metadata and dumps it in a form that is easily consumed by
+ * {@link Environment} users. If the app is running in Cloud Foundry then both metadata
  * items are JSON objects encoded in OS environment variables. VCAP_APPLICATION is a
  * shallow hash with basic information about the application (name, instance id, instance
  * index, etc.), and VCAP_SERVICES is a hash of lists where the keys are service labels
- * and the values are lists of hashes of service instance meta data. Examples are:
+ * and the values are lists of hashes of service instance metadata. Examples are:
  *
  * <pre class="code">
  * VCAP_APPLICATION: {"instance_id":"2ce0ac627a6c8e47e936d829a3a47b5b","instance_index":0,
@@ -87,21 +87,27 @@ import org.springframework.util.StringUtils;
  *
  * @author Dave Syer
  * @author Andy Wilkinson
+ * @since 1.3.0
  */
-public class CloudFoundryVcapEnvironmentPostProcessor
-		implements EnvironmentPostProcessor, Ordered {
-
-	private static final Log logger = LogFactory
-			.getLog(CloudFoundryVcapEnvironmentPostProcessor.class);
+public class CloudFoundryVcapEnvironmentPostProcessor implements EnvironmentPostProcessor, Ordered {
 
 	private static final String VCAP_APPLICATION = "VCAP_APPLICATION";
 
 	private static final String VCAP_SERVICES = "VCAP_SERVICES";
 
-	// Before ConfigFileApplicationListener so values there can use these ones
-	private int order = ConfigFileApplicationListener.DEFAULT_ORDER - 1;
+	private final Log logger;
 
-	private final JsonParser parser = JsonParserFactory.getJsonParser();
+	// Before ConfigDataEnvironmentPostProcessor so values there can use these
+	private int order = ConfigDataEnvironmentPostProcessor.ORDER - 5;
+
+	/**
+	 * Create a new {@link CloudFoundryVcapEnvironmentPostProcessor} instance.
+	 * @param logFactory the log factory to use
+	 * @since 3.0.0
+	 */
+	public CloudFoundryVcapEnvironmentPostProcessor(DeferredLogFactory logFactory) {
+		this.logger = logFactory.getLog(CloudFoundryVcapEnvironmentPostProcessor.class);
+	}
 
 	public void setOrder(int order) {
 		this.order = order;
@@ -113,24 +119,19 @@ public class CloudFoundryVcapEnvironmentPostProcessor
 	}
 
 	@Override
-	public void postProcessEnvironment(ConfigurableEnvironment environment,
-			SpringApplication application) {
+	public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
 		if (CloudPlatform.CLOUD_FOUNDRY.isActive(environment)) {
 			Properties properties = new Properties();
-			addWithPrefix(properties, getPropertiesFromApplication(environment),
-					"vcap.application.");
-			addWithPrefix(properties, getPropertiesFromServices(environment),
-					"vcap.services.");
+			JsonParser jsonParser = JsonParserFactory.getJsonParser();
+			addWithPrefix(properties, getPropertiesFromApplication(environment, jsonParser), "vcap.application.");
+			addWithPrefix(properties, getPropertiesFromServices(environment, jsonParser), "vcap.services.");
 			MutablePropertySources propertySources = environment.getPropertySources();
-			if (propertySources.contains(
-					CommandLinePropertySource.COMMAND_LINE_PROPERTY_SOURCE_NAME)) {
-				propertySources.addAfter(
-						CommandLinePropertySource.COMMAND_LINE_PROPERTY_SOURCE_NAME,
+			if (propertySources.contains(CommandLinePropertySource.COMMAND_LINE_PROPERTY_SOURCE_NAME)) {
+				propertySources.addAfter(CommandLinePropertySource.COMMAND_LINE_PROPERTY_SOURCE_NAME,
 						new PropertiesPropertySource("vcap", properties));
 			}
 			else {
-				propertySources
-						.addFirst(new PropertiesPropertySource("vcap", properties));
+				propertySources.addFirst(new PropertiesPropertySource("vcap", properties));
 			}
 		}
 	}
@@ -142,41 +143,39 @@ public class CloudFoundryVcapEnvironmentPostProcessor
 		}
 	}
 
-	private Properties getPropertiesFromApplication(Environment environment) {
+	private Properties getPropertiesFromApplication(Environment environment, JsonParser parser) {
 		Properties properties = new Properties();
 		try {
 			String property = environment.getProperty(VCAP_APPLICATION, "{}");
-			Map<String, Object> map = this.parser.parseMap(property);
+			Map<String, Object> map = parser.parseMap(property);
 			extractPropertiesFromApplication(properties, map);
 		}
 		catch (Exception ex) {
-			logger.error("Could not parse VCAP_APPLICATION", ex);
+			this.logger.error("Could not parse VCAP_APPLICATION", ex);
 		}
 		return properties;
 	}
 
-	private Properties getPropertiesFromServices(Environment environment) {
+	private Properties getPropertiesFromServices(Environment environment, JsonParser parser) {
 		Properties properties = new Properties();
 		try {
 			String property = environment.getProperty(VCAP_SERVICES, "{}");
-			Map<String, Object> map = this.parser.parseMap(property);
+			Map<String, Object> map = parser.parseMap(property);
 			extractPropertiesFromServices(properties, map);
 		}
 		catch (Exception ex) {
-			logger.error("Could not parse VCAP_SERVICES", ex);
+			this.logger.error("Could not parse VCAP_SERVICES", ex);
 		}
 		return properties;
 	}
 
-	private void extractPropertiesFromApplication(Properties properties,
-			Map<String, Object> map) {
+	private void extractPropertiesFromApplication(Properties properties, Map<String, Object> map) {
 		if (map != null) {
 			flatten(properties, map, "");
 		}
 	}
 
-	private void extractPropertiesFromServices(Properties properties,
-			Map<String, Object> map) {
+	private void extractPropertiesFromServices(Properties properties, Map<String, Object> map) {
 		if (map != null) {
 			for (Object services : map.values()) {
 				@SuppressWarnings("unchecked")
@@ -202,11 +201,9 @@ public class CloudFoundryVcapEnvironmentPostProcessor
 				// Need a compound key
 				flatten(properties, (Map<String, Object>) value, name);
 			}
-			else if (value instanceof Collection) {
+			else if (value instanceof Collection<?> collection) {
 				// Need a compound key
-				Collection<Object> collection = (Collection<Object>) value;
-				properties.put(name,
-						StringUtils.collectionToCommaDelimitedString(collection));
+				properties.put(name, StringUtils.collectionToCommaDelimitedString(collection));
 				int count = 0;
 				for (Object item : collection) {
 					String itemKey = "[" + (count++) + "]";
@@ -216,14 +213,11 @@ public class CloudFoundryVcapEnvironmentPostProcessor
 			else if (value instanceof String) {
 				properties.put(name, value);
 			}
-			else if (value instanceof Number) {
-				properties.put(name, value.toString());
-			}
-			else if (value instanceof Boolean) {
+			else if (value instanceof Number || value instanceof Boolean) {
 				properties.put(name, value.toString());
 			}
 			else {
-				properties.put(name, value == null ? "" : value);
+				properties.put(name, (value != null) ? value : "");
 			}
 		});
 	}

@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 
 import org.springframework.core.env.Environment;
 import org.springframework.core.io.ClassPathResource;
@@ -34,6 +35,7 @@ import org.springframework.util.SystemPropertyUtils;
  *
  * @author Phillip Webb
  * @author Dave Syer
+ * @since 1.0.0
  */
 public abstract class AbstractLoggingSystem extends LoggingSystem {
 
@@ -51,8 +53,7 @@ public abstract class AbstractLoggingSystem extends LoggingSystem {
 	}
 
 	@Override
-	public void initialize(LoggingInitializationContext initializationContext,
-			String configLocation, LogFile logFile) {
+	public void initialize(LoggingInitializationContext initializationContext, String configLocation, LogFile logFile) {
 		if (StringUtils.hasLength(configLocation)) {
 			initializeWithSpecificConfig(initializationContext, configLocation, logFile);
 			return;
@@ -60,15 +61,13 @@ public abstract class AbstractLoggingSystem extends LoggingSystem {
 		initializeWithConventions(initializationContext, logFile);
 	}
 
-	private void initializeWithSpecificConfig(
-			LoggingInitializationContext initializationContext, String configLocation,
+	private void initializeWithSpecificConfig(LoggingInitializationContext initializationContext, String configLocation,
 			LogFile logFile) {
 		configLocation = SystemPropertyUtils.resolvePlaceholders(configLocation);
 		loadConfiguration(initializationContext, configLocation, logFile);
 	}
 
-	private void initializeWithConventions(
-			LoggingInitializationContext initializationContext, LogFile logFile) {
+	private void initializeWithConventions(LoggingInitializationContext initializationContext, LogFile logFile) {
 		String config = getSelfInitializationConfig();
 		if (config != null && logFile == null) {
 			// self initialization has occurred, reinitialize in case of property changes
@@ -106,8 +105,7 @@ public abstract class AbstractLoggingSystem extends LoggingSystem {
 
 	private String findConfig(String[] locations) {
 		for (String location : locations) {
-			ClassPathResource resource = new ClassPathResource(location,
-					this.classLoader);
+			ClassPathResource resource = new ClassPathResource(location, this.classLoader);
 			if (resource.exists()) {
 				return "classpath:" + location;
 			}
@@ -132,8 +130,7 @@ public abstract class AbstractLoggingSystem extends LoggingSystem {
 		String[] locations = getStandardConfigLocations();
 		for (int i = 0; i < locations.length; i++) {
 			String extension = StringUtils.getFilenameExtension(locations[i]);
-			locations[i] = locations[i].substring(0,
-					locations[i].length() - extension.length() - 1) + "-spring."
+			locations[i] = locations[i].substring(0, locations[i].length() - extension.length() - 1) + "-spring."
 					+ extension;
 		}
 		return locations;
@@ -144,8 +141,7 @@ public abstract class AbstractLoggingSystem extends LoggingSystem {
 	 * @param initializationContext the logging initialization context
 	 * @param logFile the file to load or {@code null} if no log file is to be written
 	 */
-	protected abstract void loadDefaults(
-			LoggingInitializationContext initializationContext, LogFile logFile);
+	protected abstract void loadDefaults(LoggingInitializationContext initializationContext, LogFile logFile);
 
 	/**
 	 * Load a specific configuration.
@@ -153,8 +149,7 @@ public abstract class AbstractLoggingSystem extends LoggingSystem {
 	 * @param location the location of the configuration to load (never {@code null})
 	 * @param logFile the file to load or {@code null} if no log file is to be written
 	 */
-	protected abstract void loadConfiguration(
-			LoggingInitializationContext initializationContext, String location,
+	protected abstract void loadConfiguration(LoggingInitializationContext initializationContext, String location,
 			LogFile logFile);
 
 	/**
@@ -180,13 +175,41 @@ public abstract class AbstractLoggingSystem extends LoggingSystem {
 	}
 
 	protected final void applySystemProperties(Environment environment, LogFile logFile) {
-		new LoggingSystemProperties(environment).apply(logFile);
+		new LoggingSystemProperties(environment, getDefaultValueResolver(environment), null).apply(logFile);
+	}
+
+	/**
+	 * Return the default value resolver to use when resolving system properties.
+	 * @param environment the environment
+	 * @return the default value resolver
+	 * @since 3.2.0
+	 */
+	protected Function<String, String> getDefaultValueResolver(Environment environment) {
+		String defaultLogCorrelationPattern = getDefaultLogCorrelationPattern();
+		return (name) -> {
+			if (StringUtils.hasLength(defaultLogCorrelationPattern)
+					&& LoggingSystemProperty.CORRELATION_PATTERN.getApplicationPropertyName().equals(name)
+					&& environment.getProperty(LoggingSystem.EXPECT_CORRELATION_ID_PROPERTY, Boolean.class, false)) {
+				return defaultLogCorrelationPattern;
+			}
+			return null;
+		};
+	}
+
+	/**
+	 * Return the default log correlation pattern or {@code null} if log correlation
+	 * patterns are not supported.
+	 * @return the default log correlation pattern
+	 * @since 3.2.0
+	 */
+	protected String getDefaultLogCorrelationPattern() {
+		return null;
 	}
 
 	/**
 	 * Maintains a mapping between native levels and {@link LogLevel}.
 	 *
-	 * @param <T> The native level type
+	 * @param <T> the native level type
 	 */
 	protected static class LogLevels<T> {
 
@@ -200,12 +223,8 @@ public abstract class AbstractLoggingSystem extends LoggingSystem {
 		}
 
 		public void map(LogLevel system, T nativeLevel) {
-			if (!this.systemToNative.containsKey(system)) {
-				this.systemToNative.put(system, nativeLevel);
-			}
-			if (!this.nativeToSystem.containsKey(nativeLevel)) {
-				this.nativeToSystem.put(nativeLevel, system);
-			}
+			this.systemToNative.putIfAbsent(system, nativeLevel);
+			this.nativeToSystem.putIfAbsent(nativeLevel, system);
 		}
 
 		public LogLevel convertNativeToSystem(T level) {

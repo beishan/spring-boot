@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,8 +16,9 @@
 
 package org.springframework.boot.web.embedded.jetty;
 
-import org.eclipse.jetty.servlet.ServletHandler;
-import org.eclipse.jetty.webapp.WebAppContext;
+import org.eclipse.jetty.ee10.servlet.ServletHandler;
+import org.eclipse.jetty.ee10.webapp.WebAppContext;
+import org.eclipse.jetty.util.ClassMatcher;
 
 /**
  * Jetty {@link WebAppContext} used by {@link JettyWebServer} to support deferred
@@ -27,22 +28,32 @@ import org.eclipse.jetty.webapp.WebAppContext;
  */
 class JettyEmbeddedWebAppContext extends WebAppContext {
 
+	JettyEmbeddedWebAppContext() {
+		setHiddenClassMatcher(new ClassMatcher("org.springframework.boot.loader."));
+	}
+
 	@Override
 	protected ServletHandler newServletHandler() {
 		return new JettyEmbeddedServletHandler();
 	}
 
-	public void deferredInitialize() throws Exception {
-		((JettyEmbeddedServletHandler) getServletHandler()).deferredInitialize();
+	void deferredInitialize() throws Exception {
+		JettyEmbeddedServletHandler handler = (JettyEmbeddedServletHandler) getServletHandler();
+		getContext().call(handler::deferredInitialize, null);
 	}
 
-	private static class JettyEmbeddedServletHandler extends ServletHandler {
+	@Override
+	public String getCanonicalNameForTmpDir() {
+		return super.getCanonicalNameForTmpDir();
+	}
+
+	private static final class JettyEmbeddedServletHandler extends ServletHandler {
 
 		@Override
 		public void initialize() throws Exception {
 		}
 
-		public void deferredInitialize() throws Exception {
+		void deferredInitialize() throws Exception {
 			super.initialize();
 		}
 

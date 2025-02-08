@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -29,8 +29,7 @@ import java.util.Map;
  * @since 1.3.0
  */
 @SuppressWarnings("serial")
-public class SimpleConfigurationMetadataRepository
-		implements ConfigurationMetadataRepository, Serializable {
+public class SimpleConfigurationMetadataRepository implements ConfigurationMetadataRepository, Serializable {
 
 	private final Map<String, ConfigurationMetadataGroup> allGroups = new HashMap<>();
 
@@ -55,14 +54,11 @@ public class SimpleConfigurationMetadataRepository
 	public void add(Collection<ConfigurationMetadataSource> sources) {
 		for (ConfigurationMetadataSource source : sources) {
 			String groupId = source.getGroupId();
-			ConfigurationMetadataGroup group = this.allGroups.get(groupId);
-			if (group == null) {
-				group = new ConfigurationMetadataGroup(groupId);
-				this.allGroups.put(groupId, group);
-			}
+			ConfigurationMetadataGroup group = this.allGroups.computeIfAbsent(groupId,
+					(key) -> new ConfigurationMetadataGroup(groupId));
 			String sourceType = source.getType();
 			if (sourceType != null) {
-				putIfAbsent(group.getSources(), sourceType, source);
+				addOrMergeSource(group.getSources(), sourceType, source);
 			}
 		}
 	}
@@ -73,12 +69,11 @@ public class SimpleConfigurationMetadataRepository
 	 * @param property the property to add
 	 * @param source the source
 	 */
-	public void add(ConfigurationMetadataProperty property,
-			ConfigurationMetadataSource source) {
+	public void add(ConfigurationMetadataProperty property, ConfigurationMetadataSource source) {
 		if (source != null) {
-			putIfAbsent(source.getProperties(), property.getId(), property);
+			source.getProperties().putIfAbsent(property.getId(), property);
 		}
-		putIfAbsent(getGroup(source).getProperties(), property.getId(), property);
+		getGroup(source).getProperties().putIfAbsent(property.getId(), property);
 	}
 
 	/**
@@ -93,17 +88,9 @@ public class SimpleConfigurationMetadataRepository
 			}
 			else {
 				// Merge properties
-				for (Map.Entry<String, ConfigurationMetadataProperty> entry : group
-						.getProperties().entrySet()) {
-					putIfAbsent(existingGroup.getProperties(), entry.getKey(),
-							entry.getValue());
-				}
+				group.getProperties().forEach((name, value) -> existingGroup.getProperties().putIfAbsent(name, value));
 				// Merge sources
-				for (Map.Entry<String, ConfigurationMetadataSource> entry : group
-						.getSources().entrySet()) {
-					putIfAbsent(existingGroup.getSources(), entry.getKey(),
-							entry.getValue());
-				}
+				group.getSources().forEach((name, value) -> addOrMergeSource(existingGroup.getSources(), name, value));
 			}
 		}
 
@@ -111,19 +98,19 @@ public class SimpleConfigurationMetadataRepository
 
 	private ConfigurationMetadataGroup getGroup(ConfigurationMetadataSource source) {
 		if (source == null) {
-			ConfigurationMetadataGroup rootGroup = this.allGroups.get(ROOT_GROUP);
-			if (rootGroup == null) {
-				rootGroup = new ConfigurationMetadataGroup(ROOT_GROUP);
-				this.allGroups.put(ROOT_GROUP, rootGroup);
-			}
-			return rootGroup;
+			return this.allGroups.computeIfAbsent(ROOT_GROUP, (key) -> new ConfigurationMetadataGroup(ROOT_GROUP));
 		}
 		return this.allGroups.get(source.getGroupId());
 	}
 
-	private <V> void putIfAbsent(Map<String, V> map, String key, V value) {
-		if (!map.containsKey(key)) {
-			map.put(key, value);
+	private void addOrMergeSource(Map<String, ConfigurationMetadataSource> sources, String name,
+			ConfigurationMetadataSource source) {
+		ConfigurationMetadataSource existingSource = sources.get(name);
+		if (existingSource == null) {
+			sources.put(name, source);
+		}
+		else {
+			source.getProperties().forEach((k, v) -> existingSource.getProperties().putIfAbsent(k, v));
 		}
 	}
 

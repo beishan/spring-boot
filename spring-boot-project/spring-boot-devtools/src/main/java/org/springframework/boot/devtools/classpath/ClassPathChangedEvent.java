@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,8 +18,11 @@ package org.springframework.boot.devtools.classpath;
 
 import java.util.Set;
 
+import org.springframework.boot.devtools.filewatch.ChangedFile;
+import org.springframework.boot.devtools.filewatch.ChangedFile.Type;
 import org.springframework.boot.devtools.filewatch.ChangedFiles;
 import org.springframework.context.ApplicationEvent;
+import org.springframework.core.style.ToStringCreator;
 import org.springframework.util.Assert;
 
 /**
@@ -41,10 +44,9 @@ public class ClassPathChangedEvent extends ApplicationEvent {
 	 * @param changeSet the changed files
 	 * @param restartRequired if a restart is required due to the change
 	 */
-	public ClassPathChangedEvent(Object source, Set<ChangedFiles> changeSet,
-			boolean restartRequired) {
+	public ClassPathChangedEvent(Object source, Set<ChangedFiles> changeSet, boolean restartRequired) {
 		super(source);
-		Assert.notNull(changeSet, "ChangeSet must not be null");
+		Assert.notNull(changeSet, "'changeSet' must not be null");
 		this.changeSet = changeSet;
 		this.restartRequired = restartRequired;
 	}
@@ -63,6 +65,46 @@ public class ClassPathChangedEvent extends ApplicationEvent {
 	 */
 	public boolean isRestartRequired() {
 		return this.restartRequired;
+	}
+
+	@Override
+	public String toString() {
+		return new ToStringCreator(this).append("changeSet", this.changeSet)
+			.append("restartRequired", this.restartRequired)
+			.toString();
+	}
+
+	/**
+	 * Return an overview of the changes that triggered this event.
+	 * @return an overview of the changes
+	 * @since 2.6.11
+	 */
+	public String overview() {
+		int added = 0;
+		int deleted = 0;
+		int modified = 0;
+		for (ChangedFiles changedFiles : this.changeSet) {
+			for (ChangedFile changedFile : changedFiles) {
+				Type type = changedFile.getType();
+				if (type == Type.ADD) {
+					added++;
+				}
+				else if (type == Type.DELETE) {
+					deleted++;
+				}
+				else if (type == Type.MODIFY) {
+					modified++;
+				}
+			}
+		}
+		int size = added + deleted + modified;
+		return String.format("%s (%s, %s, %s)", quantityOfUnit(size, "class path change"),
+				quantityOfUnit(added, "addition"), quantityOfUnit(deleted, "deletion"),
+				quantityOfUnit(modified, "modification"));
+	}
+
+	private String quantityOfUnit(int quantity, String unit) {
+		return quantity + " " + ((quantity != 1) ? unit + "s" : unit);
 	}
 
 }

@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.function.Function;
 
+import org.springframework.boot.origin.OriginLookup;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.env.PropertySource;
@@ -37,17 +38,20 @@ import org.springframework.util.ConcurrentReferenceHashMap.ReferenceType;
  *
  * @author Phillip Webb
  */
-class SpringConfigurationPropertySources
-		implements Iterable<ConfigurationPropertySource> {
+class SpringConfigurationPropertySources implements Iterable<ConfigurationPropertySource> {
 
 	private final Iterable<PropertySource<?>> sources;
 
-	private final Map<PropertySource<?>, ConfigurationPropertySource> cache = new ConcurrentReferenceHashMap<>(
-			16, ReferenceType.SOFT);
+	private final Map<PropertySource<?>, ConfigurationPropertySource> cache = new ConcurrentReferenceHashMap<>(16,
+			ReferenceType.SOFT);
 
 	SpringConfigurationPropertySources(Iterable<PropertySource<?>> sources) {
-		Assert.notNull(sources, "Sources must not be null");
+		Assert.notNull(sources, "'sources' must not be null");
 		this.sources = sources;
+	}
+
+	boolean isUsingSources(Iterable<PropertySource<?>> sources) {
+		return this.sources == sources;
 	}
 
 	@Override
@@ -57,20 +61,22 @@ class SpringConfigurationPropertySources
 
 	private ConfigurationPropertySource adapt(PropertySource<?> source) {
 		ConfigurationPropertySource result = this.cache.get(source);
-		// Most PropertySource test quality only using the source name, we need to
+		// Most PropertySources test equality only using the source name, so we need to
 		// check the actual source hasn't also changed.
 		if (result != null && result.getUnderlyingSource() == source) {
 			return result;
 		}
 		result = SpringConfigurationPropertySource.from(source);
+		if (source instanceof OriginLookup<?> originLookup) {
+			result = result.withPrefix(originLookup.getPrefix());
+		}
 		this.cache.put(source, result);
 		return result;
 	}
 
-	private static class SourcesIterator
-			implements Iterator<ConfigurationPropertySource> {
+	private static class SourcesIterator implements Iterator<ConfigurationPropertySource> {
 
-		private Deque<Iterator<PropertySource<?>>> iterators;
+		private final Deque<Iterator<PropertySource<?>>> iterators;
 
 		private ConfigurationPropertySource next;
 
@@ -91,10 +97,10 @@ class SpringConfigurationPropertySources
 		@Override
 		public ConfigurationPropertySource next() {
 			ConfigurationPropertySource next = fetchNext();
-			this.next = null;
 			if (next == null) {
 				throw new NoSuchElementException();
 			}
+			this.next = null;
 			return next;
 		}
 
@@ -108,8 +114,8 @@ class SpringConfigurationPropertySources
 					return fetchNext();
 				}
 				PropertySource<?> candidate = this.iterators.peek().next();
-				if (candidate.getSource() instanceof ConfigurableEnvironment) {
-					push((ConfigurableEnvironment) candidate.getSource());
+				if (candidate.getSource() instanceof ConfigurableEnvironment configurableEnvironment) {
+					push(configurableEnvironment);
 					return fetchNext();
 				}
 				if (isIgnored(candidate)) {

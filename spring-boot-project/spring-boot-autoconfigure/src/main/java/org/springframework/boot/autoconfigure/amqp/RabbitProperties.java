@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,13 +20,18 @@ import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.amqp.core.AcknowledgeMode;
+import org.springframework.amqp.rabbit.connection.AbstractConnectionFactory.AddressShuffleMode;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory.CacheMode;
+import org.springframework.amqp.rabbit.connection.CachingConnectionFactory.ConfirmType;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.source.InvalidConfigurationPropertyValueException;
 import org.springframework.boot.convert.DurationUnit;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
+import org.springframework.util.unit.DataSize;
 
 /**
  * Configuration properties for Rabbit.
@@ -37,19 +42,34 @@ import org.springframework.util.StringUtils;
  * @author Andy Wilkinson
  * @author Josh Thornhill
  * @author Gary Russell
+ * @author Artsiom Yudovin
+ * @author Franjo Zilic
+ * @author Eddú Meléndez
+ * @author Rafael Carvalho
+ * @author Scott Frederick
+ * @author Lasse Wulff
+ * @author Yanming Zhou
+ * @since 1.0.0
  */
-@ConfigurationProperties(prefix = "spring.rabbitmq")
+@ConfigurationProperties("spring.rabbitmq")
 public class RabbitProperties {
 
+	private static final int DEFAULT_PORT = 5672;
+
+	private static final int DEFAULT_PORT_SECURE = 5671;
+
+	private static final int DEFAULT_STREAM_PORT = 5552;
+
 	/**
-	 * RabbitMQ host.
+	 * RabbitMQ host. Ignored if an address is set.
 	 */
 	private String host = "localhost";
 
 	/**
-	 * RabbitMQ port.
+	 * RabbitMQ port. Ignored if an address is set. Default to 5672, or 5671 if SSL is
+	 * enabled.
 	 */
-	private int port = 5672;
+	private Integer port;
 
 	/**
 	 * Login user to authenticate to the broker.
@@ -72,9 +92,15 @@ public class RabbitProperties {
 	private String virtualHost;
 
 	/**
-	 * Comma-separated list of addresses to which the client should connect.
+	 * List of addresses to which the client should connect. When set, the host and port
+	 * are ignored.
 	 */
-	private String addresses;
+	private List<String> addresses;
+
+	/**
+	 * Mode used to shuffle configured addresses.
+	 */
+	private AddressShuffleMode addressShuffleMode = AddressShuffleMode.NONE;
 
 	/**
 	 * Requested heartbeat timeout; zero for none. If a duration suffix is not specified,
@@ -84,9 +110,9 @@ public class RabbitProperties {
 	private Duration requestedHeartbeat;
 
 	/**
-	 * Whether to enable publisher confirms.
+	 * Number of channels per connection requested by the client. Use 0 for unlimited.
 	 */
-	private boolean publisherConfirms;
+	private int requestedChannelMax = 2047;
 
 	/**
 	 * Whether to enable publisher returns.
@@ -94,9 +120,24 @@ public class RabbitProperties {
 	private boolean publisherReturns;
 
 	/**
+	 * Type of publisher confirms to use.
+	 */
+	private ConfirmType publisherConfirmType;
+
+	/**
 	 * Connection timeout. Set it to zero to wait forever.
 	 */
 	private Duration connectionTimeout;
+
+	/**
+	 * Continuation timeout for RPC calls in channels. Set it to zero to wait forever.
+	 */
+	private Duration channelRpcTimeout = Duration.ofMinutes(10);
+
+	/**
+	 * Maximum size of the body of inbound (received) messages.
+	 */
+	private DataSize maxInboundMessageBodySize = DataSize.ofMegabytes(64);
 
 	/**
 	 * Cache configuration.
@@ -110,6 +151,8 @@ public class RabbitProperties {
 
 	private final Template template = new Template();
 
+	private final Stream stream = new Stream();
+
 	private List<Address> parsedAddresses;
 
 	public String getHost() {
@@ -120,7 +163,7 @@ public class RabbitProperties {
 	 * Returns the host from the first address, or the configured host if no addresses
 	 * have been set.
 	 * @return the host
-	 * @see #setAddresses(String)
+	 * @see #setAddresses(List)
 	 * @see #getHost()
 	 */
 	public String determineHost() {
@@ -134,7 +177,7 @@ public class RabbitProperties {
 		this.host = host;
 	}
 
-	public int getPort() {
+	public Integer getPort() {
 		return this.port;
 	}
 
@@ -142,50 +185,57 @@ public class RabbitProperties {
 	 * Returns the port from the first address, or the configured port if no addresses
 	 * have been set.
 	 * @return the port
-	 * @see #setAddresses(String)
+	 * @see #setAddresses(List)
 	 * @see #getPort()
 	 */
 	public int determinePort() {
 		if (CollectionUtils.isEmpty(this.parsedAddresses)) {
-			return getPort();
+			Integer port = getPort();
+			if (port != null) {
+				return port;
+			}
+			return (Optional.ofNullable(getSsl().getEnabled()).orElse(false)) ? DEFAULT_PORT_SECURE : DEFAULT_PORT;
 		}
-		Address address = this.parsedAddresses.get(0);
-		return address.port;
+		return this.parsedAddresses.get(0).port;
 	}
 
-	public void setPort(int port) {
+	public void setPort(Integer port) {
 		this.port = port;
 	}
 
-	public String getAddresses() {
+	public List<String> getAddresses() {
 		return this.addresses;
 	}
 
 	/**
-	 * Returns the comma-separated addresses or a single address ({@code host:port})
-	 * created from the configured host and port if no addresses have been set.
+	 * Returns the configured addresses or a single address ({@code host:port}) created
+	 * from the configured host and port if no addresses have been set.
 	 * @return the addresses
 	 */
-	public String determineAddresses() {
+	public List<String> determineAddresses() {
 		if (CollectionUtils.isEmpty(this.parsedAddresses)) {
-			return this.host + ":" + this.port;
+			if (this.host.contains(",")) {
+				throw new InvalidConfigurationPropertyValueException("spring.rabbitmq.host", this.host,
+						"Invalid character ','. Value must be a single host. For multiple hosts, use property 'spring.rabbitmq.addresses' instead.");
+			}
+			return List.of(this.host + ":" + determinePort());
 		}
 		List<String> addressStrings = new ArrayList<>();
 		for (Address parsedAddress : this.parsedAddresses) {
 			addressStrings.add(parsedAddress.host + ":" + parsedAddress.port);
 		}
-		return StringUtils.collectionToCommaDelimitedString(addressStrings);
+		return addressStrings;
 	}
 
-	public void setAddresses(String addresses) {
+	public void setAddresses(List<String> addresses) {
 		this.addresses = addresses;
 		this.parsedAddresses = parseAddresses(addresses);
 	}
 
-	private List<Address> parseAddresses(String addresses) {
+	private List<Address> parseAddresses(List<String> addresses) {
 		List<Address> parsedAddresses = new ArrayList<>();
-		for (String address : StringUtils.commaDelimitedListToStringArray(addresses)) {
-			parsedAddresses.add(new Address(address));
+		for (String address : addresses) {
+			parsedAddresses.add(new Address(address, Optional.ofNullable(getSsl().getEnabled()).orElse(false)));
 		}
 		return parsedAddresses;
 	}
@@ -198,7 +248,7 @@ public class RabbitProperties {
 	 * If addresses have been set and the first address has a username it is returned.
 	 * Otherwise returns the result of calling {@code getUsername()}.
 	 * @return the username
-	 * @see #setAddresses(String)
+	 * @see #setAddresses(List)
 	 * @see #getUsername()
 	 */
 	public String determineUsername() {
@@ -206,7 +256,7 @@ public class RabbitProperties {
 			return this.username;
 		}
 		Address address = this.parsedAddresses.get(0);
-		return address.username == null ? this.username : address.username;
+		return (address.username != null) ? address.username : this.username;
 	}
 
 	public void setUsername(String username) {
@@ -221,7 +271,7 @@ public class RabbitProperties {
 	 * If addresses have been set and the first address has a password it is returned.
 	 * Otherwise returns the result of calling {@code getPassword()}.
 	 * @return the password or {@code null}
-	 * @see #setAddresses(String)
+	 * @see #setAddresses(List)
 	 * @see #getPassword()
 	 */
 	public String determinePassword() {
@@ -229,7 +279,7 @@ public class RabbitProperties {
 			return getPassword();
 		}
 		Address address = this.parsedAddresses.get(0);
-		return address.password == null ? getPassword() : address.password;
+		return (address.password != null) ? address.password : getPassword();
 	}
 
 	public void setPassword(String password) {
@@ -248,7 +298,7 @@ public class RabbitProperties {
 	 * If addresses have been set and the first address has a virtual host it is returned.
 	 * Otherwise returns the result of calling {@code getVirtualHost()}.
 	 * @return the virtual host or {@code null}
-	 * @see #setAddresses(String)
+	 * @see #setAddresses(List)
 	 * @see #getVirtualHost()
 	 */
 	public String determineVirtualHost() {
@@ -256,11 +306,19 @@ public class RabbitProperties {
 			return getVirtualHost();
 		}
 		Address address = this.parsedAddresses.get(0);
-		return address.virtualHost == null ? getVirtualHost() : address.virtualHost;
+		return (address.virtualHost != null) ? address.virtualHost : getVirtualHost();
 	}
 
 	public void setVirtualHost(String virtualHost) {
-		this.virtualHost = ("".equals(virtualHost) ? "/" : virtualHost);
+		this.virtualHost = StringUtils.hasText(virtualHost) ? virtualHost : "/";
+	}
+
+	public AddressShuffleMode getAddressShuffleMode() {
+		return this.addressShuffleMode;
+	}
+
+	public void setAddressShuffleMode(AddressShuffleMode addressShuffleMode) {
+		this.addressShuffleMode = addressShuffleMode;
 	}
 
 	public Duration getRequestedHeartbeat() {
@@ -271,12 +329,12 @@ public class RabbitProperties {
 		this.requestedHeartbeat = requestedHeartbeat;
 	}
 
-	public boolean isPublisherConfirms() {
-		return this.publisherConfirms;
+	public int getRequestedChannelMax() {
+		return this.requestedChannelMax;
 	}
 
-	public void setPublisherConfirms(boolean publisherConfirms) {
-		this.publisherConfirms = publisherConfirms;
+	public void setRequestedChannelMax(int requestedChannelMax) {
+		this.requestedChannelMax = requestedChannelMax;
 	}
 
 	public boolean isPublisherReturns() {
@@ -291,8 +349,32 @@ public class RabbitProperties {
 		return this.connectionTimeout;
 	}
 
+	public void setPublisherConfirmType(ConfirmType publisherConfirmType) {
+		this.publisherConfirmType = publisherConfirmType;
+	}
+
+	public ConfirmType getPublisherConfirmType() {
+		return this.publisherConfirmType;
+	}
+
 	public void setConnectionTimeout(Duration connectionTimeout) {
 		this.connectionTimeout = connectionTimeout;
+	}
+
+	public Duration getChannelRpcTimeout() {
+		return this.channelRpcTimeout;
+	}
+
+	public void setChannelRpcTimeout(Duration channelRpcTimeout) {
+		this.channelRpcTimeout = channelRpcTimeout;
+	}
+
+	public DataSize getMaxInboundMessageBodySize() {
+		return this.maxInboundMessageBodySize;
+	}
+
+	public void setMaxInboundMessageBodySize(DataSize maxInboundMessageBodySize) {
+		this.maxInboundMessageBodySize = maxInboundMessageBodySize;
 	}
 
 	public Cache getCache() {
@@ -307,12 +389,24 @@ public class RabbitProperties {
 		return this.template;
 	}
 
-	public static class Ssl {
+	public Stream getStream() {
+		return this.stream;
+	}
+
+	public class Ssl {
+
+		private static final String SUN_X509 = "SunX509";
 
 		/**
-		 * Whether to enable SSL support.
+		 * Whether to enable SSL support. Determined automatically if an address is
+		 * provided with the protocol (amqp:// vs. amqps://).
 		 */
-		private boolean enabled;
+		private Boolean enabled;
+
+		/**
+		 * SSL bundle name.
+		 */
+		private String bundle;
 
 		/**
 		 * Path to the key store that holds the SSL certificate.
@@ -330,6 +424,11 @@ public class RabbitProperties {
 		private String keyStorePassword;
 
 		/**
+		 * Key store algorithm.
+		 */
+		private String keyStoreAlgorithm = SUN_X509;
+
+		/**
 		 * Trust store that holds SSL certificates.
 		 */
 		private String trustStore;
@@ -345,16 +444,55 @@ public class RabbitProperties {
 		private String trustStorePassword;
 
 		/**
+		 * Trust store algorithm.
+		 */
+		private String trustStoreAlgorithm = SUN_X509;
+
+		/**
 		 * SSL algorithm to use. By default, configured by the Rabbit client library.
 		 */
 		private String algorithm;
 
-		public boolean isEnabled() {
+		/**
+		 * Whether to enable server side certificate validation.
+		 */
+		private boolean validateServerCertificate = true;
+
+		/**
+		 * Whether to enable hostname verification.
+		 */
+		private boolean verifyHostname = true;
+
+		public Boolean getEnabled() {
 			return this.enabled;
 		}
 
-		public void setEnabled(boolean enabled) {
+		/**
+		 * Returns whether SSL is enabled from the first address, or the configured ssl
+		 * enabled flag if no addresses have been set.
+		 * @return whether ssl is enabled
+		 * @see #setAddresses(List)
+		 * @see #getEnabled() ()
+		 */
+		public boolean determineEnabled() {
+			boolean defaultEnabled = Optional.ofNullable(getEnabled()).orElse(false) || this.bundle != null;
+			if (CollectionUtils.isEmpty(RabbitProperties.this.parsedAddresses)) {
+				return defaultEnabled;
+			}
+			Address address = RabbitProperties.this.parsedAddresses.get(0);
+			return address.determineSslEnabled(defaultEnabled);
+		}
+
+		public void setEnabled(Boolean enabled) {
 			this.enabled = enabled;
+		}
+
+		public String getBundle() {
+			return this.bundle;
+		}
+
+		public void setBundle(String bundle) {
+			this.bundle = bundle;
 		}
 
 		public String getKeyStore() {
@@ -381,6 +519,14 @@ public class RabbitProperties {
 			this.keyStorePassword = keyStorePassword;
 		}
 
+		public String getKeyStoreAlgorithm() {
+			return this.keyStoreAlgorithm;
+		}
+
+		public void setKeyStoreAlgorithm(String keyStoreAlgorithm) {
+			this.keyStoreAlgorithm = keyStoreAlgorithm;
+		}
+
 		public String getTrustStore() {
 			return this.trustStore;
 		}
@@ -405,12 +551,36 @@ public class RabbitProperties {
 			this.trustStorePassword = trustStorePassword;
 		}
 
+		public String getTrustStoreAlgorithm() {
+			return this.trustStoreAlgorithm;
+		}
+
+		public void setTrustStoreAlgorithm(String trustStoreAlgorithm) {
+			this.trustStoreAlgorithm = trustStoreAlgorithm;
+		}
+
 		public String getAlgorithm() {
 			return this.algorithm;
 		}
 
 		public void setAlgorithm(String sslAlgorithm) {
 			this.algorithm = sslAlgorithm;
+		}
+
+		public boolean isValidateServerCertificate() {
+			return this.validateServerCertificate;
+		}
+
+		public void setValidateServerCertificate(boolean validateServerCertificate) {
+			this.validateServerCertificate = validateServerCertificate;
+		}
+
+		public boolean isVerifyHostname() {
+			return this.verifyHostname;
+		}
+
+		public void setVerifyHostname(boolean verifyHostname) {
+			this.verifyHostname = verifyHostname;
 		}
 
 	}
@@ -458,6 +628,7 @@ public class RabbitProperties {
 			public void setCheckoutTimeout(Duration checkoutTimeout) {
 				this.checkoutTimeout = checkoutTimeout;
 			}
+
 		}
 
 		public static class Connection {
@@ -503,7 +674,12 @@ public class RabbitProperties {
 		 * Container where the listener is invoked directly on the RabbitMQ consumer
 		 * thread.
 		 */
-		DIRECT
+		DIRECT,
+
+		/**
+		 * Container that uses the RabbitMQ Stream Client.
+		 */
+		STREAM
 
 	}
 
@@ -517,6 +693,8 @@ public class RabbitProperties {
 		private final SimpleContainer simple = new SimpleContainer();
 
 		private final DirectContainer direct = new DirectContainer();
+
+		private final StreamContainer stream = new StreamContainer();
 
 		public ContainerType getType() {
 			return this.type;
@@ -534,9 +712,30 @@ public class RabbitProperties {
 			return this.direct;
 		}
 
+		public StreamContainer getStream() {
+			return this.stream;
+		}
+
 	}
 
-	public abstract static class AmqpContainer {
+	public abstract static class BaseContainer {
+
+		/**
+		 * Whether to enable observation.
+		 */
+		private boolean observationEnabled;
+
+		public boolean isObservationEnabled() {
+			return this.observationEnabled;
+		}
+
+		public void setObservationEnabled(boolean observationEnabled) {
+			this.observationEnabled = observationEnabled;
+		}
+
+	}
+
+	public abstract static class AmqpContainer extends BaseContainer {
 
 		/**
 		 * Whether to start the container automatically on startup.
@@ -549,8 +748,8 @@ public class RabbitProperties {
 		private AcknowledgeMode acknowledgeMode;
 
 		/**
-		 * Number of messages to be handled in a single request. It should be greater than
-		 * or equal to the transaction size (if used).
+		 * Maximum number of unacknowledged messages that can be outstanding at each
+		 * consumer.
 		 */
 		private Integer prefetch;
 
@@ -563,6 +762,18 @@ public class RabbitProperties {
 		 * How often idle container events should be published.
 		 */
 		private Duration idleEventInterval;
+
+		/**
+		 * Whether the container should present batched messages as discrete messages or
+		 * call the listener with the batch.
+		 */
+		private boolean deBatchingEnabled = true;
+
+		/**
+		 * Whether the container (when stopped) should stop immediately after processing
+		 * the current message or stop after processing all pre-fetched messages.
+		 */
+		private boolean forceStop;
 
 		/**
 		 * Optional properties for a retry interceptor.
@@ -609,6 +820,24 @@ public class RabbitProperties {
 			this.idleEventInterval = idleEventInterval;
 		}
 
+		public abstract boolean isMissingQueuesFatal();
+
+		public boolean isDeBatchingEnabled() {
+			return this.deBatchingEnabled;
+		}
+
+		public void setDeBatchingEnabled(boolean deBatchingEnabled) {
+			this.deBatchingEnabled = deBatchingEnabled;
+		}
+
+		public boolean isForceStop() {
+			return this.forceStop;
+		}
+
+		public void setForceStop(boolean forceStop) {
+			this.forceStop = forceStop;
+		}
+
 		public ListenerRetry getRetry() {
 			return this.retry;
 		}
@@ -631,11 +860,25 @@ public class RabbitProperties {
 		private Integer maxConcurrency;
 
 		/**
-		 * Number of messages to be processed in a transaction. That is, the number of
-		 * messages between acks. For best results, it should be less than or equal to the
-		 * prefetch count.
+		 * Batch size, expressed as the number of physical messages, to be used by the
+		 * container.
 		 */
-		private Integer transactionSize;
+		private Integer batchSize;
+
+		/**
+		 * Whether to fail if the queues declared by the container are not available on
+		 * the broker and/or whether to stop the container if one or more queues are
+		 * deleted at runtime.
+		 */
+		private boolean missingQueuesFatal = true;
+
+		/**
+		 * Whether the container creates a batch of messages based on the
+		 * 'receive-timeout' and 'batch-size'. Coerces 'de-batching-enabled' to true to
+		 * include the contents of a producer created batch in the batch as discrete
+		 * records.
+		 */
+		private boolean consumerBatchEnabled;
 
 		public Integer getConcurrency() {
 			return this.concurrency;
@@ -653,12 +896,29 @@ public class RabbitProperties {
 			this.maxConcurrency = maxConcurrency;
 		}
 
-		public Integer getTransactionSize() {
-			return this.transactionSize;
+		public Integer getBatchSize() {
+			return this.batchSize;
 		}
 
-		public void setTransactionSize(Integer transactionSize) {
-			this.transactionSize = transactionSize;
+		public void setBatchSize(Integer batchSize) {
+			this.batchSize = batchSize;
+		}
+
+		@Override
+		public boolean isMissingQueuesFatal() {
+			return this.missingQueuesFatal;
+		}
+
+		public void setMissingQueuesFatal(boolean missingQueuesFatal) {
+			this.missingQueuesFatal = missingQueuesFatal;
+		}
+
+		public boolean isConsumerBatchEnabled() {
+			return this.consumerBatchEnabled;
+		}
+
+		public void setConsumerBatchEnabled(boolean consumerBatchEnabled) {
+			this.consumerBatchEnabled = consumerBatchEnabled;
 		}
 
 	}
@@ -673,12 +933,45 @@ public class RabbitProperties {
 		 */
 		private Integer consumersPerQueue;
 
+		/**
+		 * Whether to fail if the queues declared by the container are not available on
+		 * the broker.
+		 */
+		private boolean missingQueuesFatal = false;
+
 		public Integer getConsumersPerQueue() {
 			return this.consumersPerQueue;
 		}
 
 		public void setConsumersPerQueue(Integer consumersPerQueue) {
 			this.consumersPerQueue = consumersPerQueue;
+		}
+
+		@Override
+		public boolean isMissingQueuesFatal() {
+			return this.missingQueuesFatal;
+		}
+
+		public void setMissingQueuesFatal(boolean missingQueuesFatal) {
+			this.missingQueuesFatal = missingQueuesFatal;
+		}
+
+	}
+
+	public static class StreamContainer extends BaseContainer {
+
+		/**
+		 * Whether the container will support listeners that consume native stream
+		 * messages instead of Spring AMQP messages.
+		 */
+		private boolean nativeListener;
+
+		public boolean isNativeListener() {
+			return this.nativeListener;
+		}
+
+		public void setNativeListener(boolean nativeListener) {
+			this.nativeListener = nativeListener;
 		}
 
 	}
@@ -693,12 +986,12 @@ public class RabbitProperties {
 		private Boolean mandatory;
 
 		/**
-		 * Timeout for `receive()` operations.
+		 * Timeout for receive() operations.
 		 */
 		private Duration receiveTimeout;
 
 		/**
-		 * Timeout for `sendAndReceive()` operations.
+		 * Timeout for sendAndReceive() operations.
 		 */
 		private Duration replyTimeout;
 
@@ -711,6 +1004,22 @@ public class RabbitProperties {
 		 * Value of a default routing key to use for send operations.
 		 */
 		private String routingKey = "";
+
+		/**
+		 * Name of the default queue to receive messages from when none is specified
+		 * explicitly.
+		 */
+		private String defaultReceiveQueue;
+
+		/**
+		 * Whether to enable observation.
+		 */
+		private boolean observationEnabled;
+
+		/**
+		 * Simple patterns for allowable packages/classes for deserialization.
+		 */
+		private List<String> allowedListPatterns;
 
 		public Retry getRetry() {
 			return this.retry;
@@ -754,6 +1063,30 @@ public class RabbitProperties {
 
 		public void setRoutingKey(String routingKey) {
 			this.routingKey = routingKey;
+		}
+
+		public String getDefaultReceiveQueue() {
+			return this.defaultReceiveQueue;
+		}
+
+		public void setDefaultReceiveQueue(String defaultReceiveQueue) {
+			this.defaultReceiveQueue = defaultReceiveQueue;
+		}
+
+		public boolean isObservationEnabled() {
+			return this.observationEnabled;
+		}
+
+		public void setObservationEnabled(boolean observationEnabled) {
+			this.observationEnabled = observationEnabled;
+		}
+
+		public List<String> getAllowedListPatterns() {
+			return this.allowedListPatterns;
+		}
+
+		public void setAllowedListPatterns(List<String> allowedListPatterns) {
+			this.allowedListPatterns = allowedListPatterns;
 		}
 
 	}
@@ -848,7 +1181,7 @@ public class RabbitProperties {
 
 		private static final String PREFIX_AMQP = "amqp://";
 
-		private static final int DEFAULT_PORT = 5672;
+		private static final String PREFIX_AMQP_SECURE = "amqps://";
 
 		private String host;
 
@@ -860,33 +1193,43 @@ public class RabbitProperties {
 
 		private String virtualHost;
 
-		private Address(String input) {
+		private Boolean secureConnection;
+
+		private Address(String input, boolean sslEnabled) {
 			input = input.trim();
 			input = trimPrefix(input);
 			input = parseUsernameAndPassword(input);
 			input = parseVirtualHost(input);
-			parseHostAndPort(input);
+			parseHostAndPort(input, sslEnabled);
 		}
 
 		private String trimPrefix(String input) {
+			if (input.startsWith(PREFIX_AMQP_SECURE)) {
+				this.secureConnection = true;
+				return input.substring(PREFIX_AMQP_SECURE.length());
+			}
 			if (input.startsWith(PREFIX_AMQP)) {
-				input = input.substring(PREFIX_AMQP.length());
+				this.secureConnection = false;
+				return input.substring(PREFIX_AMQP.length());
 			}
 			return input;
 		}
 
 		private String parseUsernameAndPassword(String input) {
-			if (input.contains("@")) {
-				String[] split = StringUtils.split(input, "@");
-				String creds = split[0];
-				input = split[1];
-				split = StringUtils.split(creds, ":");
-				this.username = split[0];
-				if (split.length > 0) {
-					this.password = split[1];
-				}
+			String[] splitInput = StringUtils.split(input, "@");
+			if (splitInput == null) {
+				return input;
 			}
-			return input;
+			String credentials = splitInput[0];
+			String[] splitCredentials = StringUtils.split(credentials, ":");
+			if (splitCredentials == null) {
+				this.username = credentials;
+			}
+			else {
+				this.username = splitCredentials[0];
+				this.password = splitCredentials[1];
+			}
+			return splitInput[1];
 		}
 
 		private String parseVirtualHost(String input) {
@@ -901,16 +1244,106 @@ public class RabbitProperties {
 			return input;
 		}
 
-		private void parseHostAndPort(String input) {
-			int portIndex = input.indexOf(':');
-			if (portIndex == -1) {
+		private void parseHostAndPort(String input, boolean sslEnabled) {
+			int bracketIndex = input.lastIndexOf(']');
+			int colonIndex = input.lastIndexOf(':');
+			if (colonIndex == -1 || colonIndex < bracketIndex) {
 				this.host = input;
-				this.port = DEFAULT_PORT;
+				this.port = (determineSslEnabled(sslEnabled)) ? DEFAULT_PORT_SECURE : DEFAULT_PORT;
 			}
 			else {
-				this.host = input.substring(0, portIndex);
-				this.port = Integer.valueOf(input.substring(portIndex + 1));
+				this.host = input.substring(0, colonIndex);
+				this.port = Integer.parseInt(input.substring(colonIndex + 1));
 			}
+		}
+
+		private boolean determineSslEnabled(boolean sslEnabled) {
+			return (this.secureConnection != null) ? this.secureConnection : sslEnabled;
+		}
+
+	}
+
+	public static final class Stream {
+
+		/**
+		 * Host of a RabbitMQ instance with the Stream plugin enabled.
+		 */
+		private String host = "localhost";
+
+		/**
+		 * Stream port of a RabbitMQ instance with the Stream plugin enabled.
+		 */
+		private int port = DEFAULT_STREAM_PORT;
+
+		/**
+		 * Virtual host of a RabbitMQ instance with the Stream plugin enabled. When not
+		 * set, spring.rabbitmq.virtual-host is used.
+		 */
+		private String virtualHost;
+
+		/**
+		 * Login user to authenticate to the broker. When not set,
+		 * spring.rabbitmq.username is used.
+		 */
+		private String username;
+
+		/**
+		 * Login password to authenticate to the broker. When not set
+		 * spring.rabbitmq.password is used.
+		 */
+		private String password;
+
+		/**
+		 * Name of the stream.
+		 */
+		private String name;
+
+		public String getHost() {
+			return this.host;
+		}
+
+		public void setHost(String host) {
+			this.host = host;
+		}
+
+		public int getPort() {
+			return this.port;
+		}
+
+		public void setPort(int port) {
+			this.port = port;
+		}
+
+		public String getVirtualHost() {
+			return this.virtualHost;
+		}
+
+		public void setVirtualHost(String virtualHost) {
+			this.virtualHost = virtualHost;
+		}
+
+		public String getUsername() {
+			return this.username;
+		}
+
+		public void setUsername(String username) {
+			this.username = username;
+		}
+
+		public String getPassword() {
+			return this.password;
+		}
+
+		public void setPassword(String password) {
+			this.password = password;
+		}
+
+		public String getName() {
+			return this.name;
+		}
+
+		public void setName(String name) {
+			this.name = name;
 		}
 
 	}

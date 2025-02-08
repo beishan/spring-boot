@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,9 +19,12 @@ package org.springframework.boot.configurationsample.fieldvalues;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Period;
+import java.time.temporal.ChronoUnit;
 
 import org.springframework.boot.configurationsample.ConfigurationProperties;
 import org.springframework.util.MimeType;
+import org.springframework.util.unit.DataSize;
 
 /**
  * Sample object containing fields with initial values.
@@ -107,7 +110,7 @@ public class FieldValues {
 
 	private Integer[] integerArray = new Integer[] { 42, 24 };
 
-	private FieldValues[] unknownArray = new FieldValues[] { new FieldValues() };
+	private UnknownElementType[] unknownArray = new UnknownElementType[] { new UnknownElementType() };
 
 	private Duration durationNone;
 
@@ -122,5 +125,49 @@ public class FieldValues {
 	private Duration durationHours = Duration.ofHours(40);
 
 	private Duration durationDays = Duration.ofDays(50);
+
+	private Duration durationZero = Duration.ZERO;
+
+	private DataSize dataSizeNone;
+
+	private DataSize dataSizeBytes = DataSize.ofBytes(5);
+
+	private DataSize dataSizeKilobytes = DataSize.ofKilobytes(10);
+
+	private DataSize dataSizeMegabytes = DataSize.ofMegabytes(20);
+
+	private DataSize dataSizeGigabytes = DataSize.ofGigabytes(30);
+
+	private DataSize dataSizeTerabytes = DataSize.ofTerabytes(40);
+
+	private Period periodNone;
+
+	private Period periodDays = Period.ofDays(3);
+
+	private Period periodWeeks = Period.ofWeeks(2);
+
+	private Period periodMonths = Period.ofMonths(10);
+
+	private Period periodYears = Period.ofYears(15);
+
+	private Period periodZero = Period.ZERO;
+
+	private ChronoUnit enumNone;
+
+	private ChronoUnit enumSimple = ChronoUnit.SECONDS;
+
+	private java.time.temporal.ChronoField enumQualified = java.time.temporal.ChronoField.HOUR_OF_DAY;
+
+	private ChronoUnit enumWithIndirection = SampleOptions.DEFAULT_UNIT;
+
+	private int memberSelectInt = SampleOptions.DEFAULT_MAX_RETRIES;
+
+	public static class SampleOptions {
+
+		static final Integer DEFAULT_MAX_RETRIES = 20;
+
+		static final ChronoUnit DEFAULT_UNIT = ChronoUnit.SECONDS;
+
+	}
 
 }

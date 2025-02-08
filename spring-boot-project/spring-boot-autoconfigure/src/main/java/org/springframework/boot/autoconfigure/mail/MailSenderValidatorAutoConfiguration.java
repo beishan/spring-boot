@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,14 +16,12 @@
 
 package org.springframework.boot.autoconfigure.mail;
 
-import javax.annotation.PostConstruct;
-import javax.mail.MessagingException;
+import jakarta.mail.MessagingException;
 
-import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnSingleCandidate;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 
 /**
@@ -34,9 +32,8 @@ import org.springframework.mail.javamail.JavaMailSenderImpl;
  * @author Stephane Nicoll
  * @since 1.3.0
  */
-@Configuration
-@AutoConfigureAfter(MailSenderAutoConfiguration.class)
-@ConditionalOnProperty(prefix = "spring.mail", value = "test-connection")
+@AutoConfiguration(after = MailSenderAutoConfiguration.class)
+@ConditionalOnBooleanProperty("spring.mail.test-connection")
 @ConditionalOnSingleCandidate(JavaMailSenderImpl.class)
 public class MailSenderValidatorAutoConfiguration {
 
@@ -44,9 +41,9 @@ public class MailSenderValidatorAutoConfiguration {
 
 	public MailSenderValidatorAutoConfiguration(JavaMailSenderImpl mailSender) {
 		this.mailSender = mailSender;
+		validateConnection();
 	}
 
-	@PostConstruct
 	public void validateConnection() {
 		try {
 			this.mailSender.testConnection();

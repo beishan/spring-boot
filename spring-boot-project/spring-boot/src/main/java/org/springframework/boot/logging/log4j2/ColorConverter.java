@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,9 +16,11 @@
 
 package org.springframework.boot.logging.log4j2;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import org.apache.logging.log4j.Level;
@@ -38,7 +40,7 @@ import org.springframework.boot.ansi.AnsiOutput;
 import org.springframework.boot.ansi.AnsiStyle;
 
 /**
- * Log4j2 {@link LogEventPatternConverter} colors output using the {@link AnsiOutput}
+ * Log4j2 {@link LogEventPatternConverter} to color output using the {@link AnsiOutput}
  * class. A single option 'styling' can be provided to the converter, or if not specified
  * color styling will be picked based on the logging level.
  *
@@ -53,13 +55,10 @@ public final class ColorConverter extends LogEventPatternConverter {
 
 	static {
 		Map<String, AnsiElement> ansiElements = new HashMap<>();
+		Arrays.stream(AnsiColor.values())
+			.filter((color) -> color != AnsiColor.DEFAULT)
+			.forEach((color) -> ansiElements.put(color.name().toLowerCase(Locale.ROOT), color));
 		ansiElements.put("faint", AnsiStyle.FAINT);
-		ansiElements.put("red", AnsiColor.RED);
-		ansiElements.put("green", AnsiColor.GREEN);
-		ansiElements.put("yellow", AnsiColor.YELLOW);
-		ansiElements.put("blue", AnsiColor.BLUE);
-		ansiElements.put("magenta", AnsiColor.MAGENTA);
-		ansiElements.put("cyan", AnsiColor.CYAN);
 		ELEMENTS = Collections.unmodifiableMap(ansiElements);
 	}
 
@@ -83,28 +82,6 @@ public final class ColorConverter extends LogEventPatternConverter {
 		this.styling = styling;
 	}
 
-	/**
-	 * Creates a new instance of the class. Required by Log4J2.
-	 * @param config the configuration
-	 * @param options the options
-	 * @return a new instance, or {@code null} if the options are invalid
-	 */
-	public static ColorConverter newInstance(Configuration config, String[] options) {
-		if (options.length < 1) {
-			LOGGER.error("Incorrect number of options on style. "
-					+ "Expected at least 1, received {}", options.length);
-			return null;
-		}
-		if (options[0] == null) {
-			LOGGER.error("No pattern supplied on style");
-			return null;
-		}
-		PatternParser parser = PatternLayout.createPatternParser(config);
-		List<PatternFormatter> formatters = parser.parse(options[0]);
-		AnsiElement element = (options.length == 1 ? null : ELEMENTS.get(options[1]));
-		return new ColorConverter(formatters, element);
-	}
-
 	@Override
 	public boolean handlesThrowable() {
 		for (PatternFormatter formatter : this.formatters) {
@@ -121,20 +98,40 @@ public final class ColorConverter extends LogEventPatternConverter {
 		for (PatternFormatter formatter : this.formatters) {
 			formatter.format(event, buf);
 		}
-		if (buf.length() > 0) {
+		if (!buf.isEmpty()) {
 			AnsiElement element = this.styling;
 			if (element == null) {
 				// Assume highlighting
 				element = LEVELS.get(event.getLevel().intLevel());
-				element = (element == null ? AnsiColor.GREEN : element);
+				element = (element != null) ? element : AnsiColor.GREEN;
 			}
 			appendAnsiString(toAppendTo, buf.toString(), element);
 		}
 	}
 
-	protected void appendAnsiString(StringBuilder toAppendTo, String in,
-			AnsiElement element) {
+	protected void appendAnsiString(StringBuilder toAppendTo, String in, AnsiElement element) {
 		toAppendTo.append(AnsiOutput.toString(element, in));
+	}
+
+	/**
+	 * Creates a new instance of the class. Required by Log4J2.
+	 * @param config the configuration
+	 * @param options the options
+	 * @return a new instance, or {@code null} if the options are invalid
+	 */
+	public static ColorConverter newInstance(Configuration config, String[] options) {
+		if (options.length < 1) {
+			LOGGER.error("Incorrect number of options on style. Expected at least 1, received {}", options.length);
+			return null;
+		}
+		if (options[0] == null) {
+			LOGGER.error("No pattern supplied on style");
+			return null;
+		}
+		PatternParser parser = PatternLayout.createPatternParser(config);
+		List<PatternFormatter> formatters = parser.parse(options[0]);
+		AnsiElement element = (options.length != 1) ? ELEMENTS.get(options[1]) : null;
+		return new ColorConverter(formatters, element);
 	}
 
 }

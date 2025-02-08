@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,13 +19,12 @@ package org.springframework.boot.actuate.endpoint.web.servlet;
 import java.io.IOException;
 import java.util.Arrays;
 
-import javax.servlet.Filter;
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
-import org.junit.Test;
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.junit.jupiter.api.Test;
 
 import org.springframework.boot.actuate.endpoint.web.EndpointLinksResolver;
 import org.springframework.boot.actuate.endpoint.web.EndpointMapping;
@@ -51,6 +50,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.servletapi.SecurityContextHolderAwareRequestWrapper;
+import org.springframework.util.StringUtils;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -62,10 +62,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Andy Wilkinson
  * @see WebMvcEndpointHandlerMapping
  */
-public class MvcWebEndpointIntegrationTests extends
-		AbstractWebEndpointIntegrationTests<AnnotationConfigServletWebServerApplicationContext> {
+class MvcWebEndpointIntegrationTests
+		extends AbstractWebEndpointIntegrationTests<AnnotationConfigServletWebServerApplicationContext> {
 
-	public MvcWebEndpointIntegrationTests() {
+	MvcWebEndpointIntegrationTests() {
 		super(MvcWebEndpointIntegrationTests::createApplicationContext,
 				MvcWebEndpointIntegrationTests::applyAuthenticatedConfiguration);
 	}
@@ -76,32 +76,53 @@ public class MvcWebEndpointIntegrationTests extends
 		return context;
 	}
 
-	private static void applyAuthenticatedConfiguration(
-			AnnotationConfigServletWebServerApplicationContext context) {
+	private static void applyAuthenticatedConfiguration(AnnotationConfigServletWebServerApplicationContext context) {
 		context.register(AuthenticatedConfiguration.class);
 	}
 
 	@Test
-	public void responseToOptionsRequestIncludesCorsHeaders() {
-		load(TestEndpointConfiguration.class, (client) -> client.options().uri("/test")
-				.accept(MediaType.APPLICATION_JSON)
-				.header("Access-Control-Request-Method", "POST")
-				.header("Origin", "http://example.com").exchange().expectStatus().isOk()
-				.expectHeader()
-				.valueEquals("Access-Control-Allow-Origin", "http://example.com")
-				.expectHeader().valueEquals("Access-Control-Allow-Methods", "GET,POST"));
+	void responseToOptionsRequestIncludesCorsHeaders() {
+		load(TestEndpointConfiguration.class,
+				(client) -> client.options()
+					.uri("/test")
+					.accept(MediaType.APPLICATION_JSON)
+					.header("Access-Control-Request-Method", "POST")
+					.header("Origin", "https://example.com")
+					.exchange()
+					.expectStatus()
+					.isOk()
+					.expectHeader()
+					.valueEquals("Access-Control-Allow-Origin", "https://example.com")
+					.expectHeader()
+					.valueEquals("Access-Control-Allow-Methods", "GET,POST"));
 	}
 
 	@Test
-	public void readOperationsThatReturnAResourceSupportRangeRequests() {
+	void readOperationsThatReturnAResourceSupportRangeRequests() {
 		load(ResourceEndpointConfiguration.class, (client) -> {
-			byte[] responseBody = client.get().uri("/resource")
-					.header("Range", "bytes=0-3").exchange().expectStatus()
-					.isEqualTo(HttpStatus.PARTIAL_CONTENT).expectHeader()
-					.contentType(MediaType.APPLICATION_OCTET_STREAM)
-					.returnResult(byte[].class).getResponseBodyContent();
+			byte[] responseBody = client.get()
+				.uri("/resource")
+				.header("Range", "bytes=0-3")
+				.exchange()
+				.expectStatus()
+				.isEqualTo(HttpStatus.PARTIAL_CONTENT)
+				.expectHeader()
+				.contentType(MediaType.APPLICATION_OCTET_STREAM)
+				.returnResult(byte[].class)
+				.getResponseBodyContent();
 			assertThat(responseBody).containsExactly(0, 1, 2, 3);
 		});
+	}
+
+	@Test
+	void requestWithSuffixShouldNotMatch() {
+		load(TestEndpointConfiguration.class,
+				(client) -> client.options()
+					.uri("/test.do")
+					.accept(MediaType.APPLICATION_JSON)
+					.exchange()
+					.expectStatus()
+					.isNotFound());
 	}
 
 	@Override
@@ -109,53 +130,74 @@ public class MvcWebEndpointIntegrationTests extends
 		return context.getWebServer().getPort();
 	}
 
-	@Configuration
-	@ImportAutoConfiguration({ JacksonAutoConfiguration.class,
-			HttpMessageConvertersAutoConfiguration.class,
+	@Configuration(proxyBeanMethods = false)
+	@ImportAutoConfiguration({ JacksonAutoConfiguration.class, HttpMessageConvertersAutoConfiguration.class,
 			ServletWebServerFactoryAutoConfiguration.class, WebMvcAutoConfiguration.class,
 			DispatcherServletAutoConfiguration.class, ErrorMvcAutoConfiguration.class })
 	static class WebMvcConfiguration {
 
 		@Bean
-		public TomcatServletWebServerFactory tomcat() {
+		TomcatServletWebServerFactory tomcat() {
 			return new TomcatServletWebServerFactory(0);
 		}
 
 		@Bean
-		public WebMvcEndpointHandlerMapping webEndpointHandlerMapping(
-				Environment environment, WebEndpointDiscoverer endpointDiscoverer,
-				EndpointMediaTypes endpointMediaTypes) {
+		WebMvcEndpointHandlerMapping webEndpointHandlerMapping(Environment environment,
+				WebEndpointDiscoverer endpointDiscoverer, EndpointMediaTypes endpointMediaTypes) {
 			CorsConfiguration corsConfiguration = new CorsConfiguration();
-			corsConfiguration.setAllowedOrigins(Arrays.asList("http://example.com"));
+			corsConfiguration.setAllowedOrigins(Arrays.asList("https://example.com"));
 			corsConfiguration.setAllowedMethods(Arrays.asList("GET", "POST"));
-			return new WebMvcEndpointHandlerMapping(
-					new EndpointMapping(environment.getProperty("endpointPath")),
-					endpointDiscoverer.getEndpoints(), endpointMediaTypes,
-					corsConfiguration,
-					new EndpointLinksResolver(endpointDiscoverer.getEndpoints()));
+			String endpointPath = environment.getProperty("endpointPath");
+			return new WebMvcEndpointHandlerMapping(new EndpointMapping(endpointPath),
+					endpointDiscoverer.getEndpoints(), endpointMediaTypes, corsConfiguration,
+					new EndpointLinksResolver(endpointDiscoverer.getEndpoints()), StringUtils.hasText(endpointPath));
 		}
 
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
+	@ImportAutoConfiguration({ JacksonAutoConfiguration.class, HttpMessageConvertersAutoConfiguration.class,
+			ServletWebServerFactoryAutoConfiguration.class, WebMvcAutoConfiguration.class,
+			DispatcherServletAutoConfiguration.class, ErrorMvcAutoConfiguration.class })
+	static class PathMatcherWebMvcConfiguration {
+
+		@Bean
+		TomcatServletWebServerFactory tomcat() {
+			return new TomcatServletWebServerFactory(0);
+		}
+
+		@Bean
+		WebMvcEndpointHandlerMapping webEndpointHandlerMapping(Environment environment,
+				WebEndpointDiscoverer endpointDiscoverer, EndpointMediaTypes endpointMediaTypes) {
+			CorsConfiguration corsConfiguration = new CorsConfiguration();
+			corsConfiguration.setAllowedOrigins(Arrays.asList("https://example.com"));
+			corsConfiguration.setAllowedMethods(Arrays.asList("GET", "POST"));
+			String endpointPath = environment.getProperty("endpointPath");
+			WebMvcEndpointHandlerMapping handlerMapping = new WebMvcEndpointHandlerMapping(
+					new EndpointMapping(endpointPath), endpointDiscoverer.getEndpoints(), endpointMediaTypes,
+					corsConfiguration, new EndpointLinksResolver(endpointDiscoverer.getEndpoints()),
+					StringUtils.hasText(endpointPath));
+			return handlerMapping;
+		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
 	static class AuthenticatedConfiguration {
 
 		@Bean
-		public Filter securityFilter() {
+		Filter securityFilter() {
 			return new OncePerRequestFilter() {
 
 				@Override
-				protected void doFilterInternal(HttpServletRequest request,
-						HttpServletResponse response, FilterChain filterChain)
-						throws ServletException, IOException {
+				protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+						FilterChain filterChain) throws ServletException, IOException {
 					SecurityContext context = SecurityContextHolder.createEmptyContext();
-					context.setAuthentication(new UsernamePasswordAuthenticationToken(
-							"Alice", "secret",
+					context.setAuthentication(new UsernamePasswordAuthenticationToken("Alice", "secret",
 							Arrays.asList(new SimpleGrantedAuthority("ROLE_ACTUATOR"))));
 					SecurityContextHolder.setContext(context);
 					try {
-						filterChain.doFilter(new SecurityContextHolderAwareRequestWrapper(
-								request, "ROLE_"), response);
+						filterChain.doFilter(new SecurityContextHolderAwareRequestWrapper(request, "ROLE_"), response);
 					}
 					finally {
 						SecurityContextHolder.clearContext();

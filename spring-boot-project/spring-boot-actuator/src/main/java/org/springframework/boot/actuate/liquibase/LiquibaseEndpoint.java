@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,11 +21,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import javax.sql.DataSource;
 
-import liquibase.changelog.ChangeLogHistoryService;
 import liquibase.changelog.ChangeSet.ExecType;
 import liquibase.changelog.RanChangeSet;
 import liquibase.changelog.StandardChangeLogHistoryService;
@@ -34,6 +32,7 @@ import liquibase.database.DatabaseFactory;
 import liquibase.database.jvm.JdbcConnection;
 import liquibase.integration.spring.SpringLiquibase;
 
+import org.springframework.boot.actuate.endpoint.OperationResponseBody;
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
 import org.springframework.context.ApplicationContext;
@@ -41,7 +40,7 @@ import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 /**
- * {@link Endpoint} to expose liquibase info.
+ * {@link Endpoint @Endpoint} to expose liquibase info.
  *
  * @author Eddú Meléndez
  * @since 2.0.0
@@ -52,46 +51,52 @@ public class LiquibaseEndpoint {
 	private final ApplicationContext context;
 
 	public LiquibaseEndpoint(ApplicationContext context) {
-		Assert.notNull(context, "Context must be specified");
+		Assert.notNull(context, "'context' must be specified");
 		this.context = context;
 	}
 
 	@ReadOperation
-	public ApplicationLiquibaseBeans liquibaseBeans() {
+	public LiquibaseBeansDescriptor liquibaseBeans() {
 		ApplicationContext target = this.context;
-		Map<String, ContextLiquibaseBeans> contextBeans = new HashMap<>();
+		Map<String, ContextLiquibaseBeansDescriptor> contextBeans = new HashMap<>();
 		while (target != null) {
-			Map<String, LiquibaseBean> liquibaseBeans = new HashMap<>();
+			Map<String, LiquibaseBeanDescriptor> liquibaseBeans = new HashMap<>();
 			DatabaseFactory factory = DatabaseFactory.getInstance();
-			StandardChangeLogHistoryService service = new StandardChangeLogHistoryService();
-			this.context.getBeansOfType(SpringLiquibase.class)
-					.forEach((name, liquibase) -> liquibaseBeans.put(name,
-							createReport(liquibase, service, factory)));
+			target.getBeansOfType(SpringLiquibase.class)
+				.forEach((name, liquibase) -> liquibaseBeans.put(name, createReport(liquibase, factory)));
 			ApplicationContext parent = target.getParent();
-			contextBeans.put(target.getId(), new ContextLiquibaseBeans(liquibaseBeans,
-					parent == null ? null : parent.getId()));
+			contextBeans.put(target.getId(),
+					new ContextLiquibaseBeansDescriptor(liquibaseBeans, (parent != null) ? parent.getId() : null));
 			target = parent;
 		}
-		return new ApplicationLiquibaseBeans(contextBeans);
+		return new LiquibaseBeansDescriptor(contextBeans);
 	}
 
-	private LiquibaseBean createReport(SpringLiquibase liquibase,
-			ChangeLogHistoryService service, DatabaseFactory factory) {
+	private LiquibaseBeanDescriptor createReport(SpringLiquibase liquibase, DatabaseFactory factory) {
 		try {
 			DataSource dataSource = liquibase.getDataSource();
 			JdbcConnection connection = new JdbcConnection(dataSource.getConnection());
+			Database database = null;
 			try {
-				Database database = factory.findCorrectDatabaseImplementation(connection);
+				database = factory.findCorrectDatabaseImplementation(connection);
 				String defaultSchema = liquibase.getDefaultSchema();
 				if (StringUtils.hasText(defaultSchema)) {
 					database.setDefaultSchemaName(defaultSchema);
 				}
+				database.setDatabaseChangeLogTableName(liquibase.getDatabaseChangeLogTable());
+				database.setDatabaseChangeLogLockTableName(liquibase.getDatabaseChangeLogLockTable());
+				StandardChangeLogHistoryService service = new StandardChangeLogHistoryService();
 				service.setDatabase(database);
-				return new LiquibaseBean(service.getRanChangeSets().stream()
-						.map(ChangeSet::new).collect(Collectors.toList()));
+				return new LiquibaseBeanDescriptor(
+						service.getRanChangeSets().stream().map(ChangeSetDescriptor::new).toList());
 			}
 			finally {
-				connection.close();
+				if (database != null) {
+					database.close();
+				}
+				else {
+					connection.close();
+				}
 			}
 		}
 		catch (Exception ex) {
@@ -100,40 +105,37 @@ public class LiquibaseEndpoint {
 	}
 
 	/**
-	 * Description of an application's {@link SpringLiquibase} beans, primarily intended
-	 * for serialization to JSON.
+	 * Description of an application's {@link SpringLiquibase} beans.
 	 */
-	public static final class ApplicationLiquibaseBeans {
+	public static final class LiquibaseBeansDescriptor implements OperationResponseBody {
 
-		private final Map<String, ContextLiquibaseBeans> contexts;
+		private final Map<String, ContextLiquibaseBeansDescriptor> contexts;
 
-		private ApplicationLiquibaseBeans(Map<String, ContextLiquibaseBeans> contexts) {
+		private LiquibaseBeansDescriptor(Map<String, ContextLiquibaseBeansDescriptor> contexts) {
 			this.contexts = contexts;
 		}
 
-		public Map<String, ContextLiquibaseBeans> getContexts() {
+		public Map<String, ContextLiquibaseBeansDescriptor> getContexts() {
 			return this.contexts;
 		}
 
 	}
 
 	/**
-	 * Description of an application context's {@link SpringLiquibase} beans, primarily
-	 * intended for serialization to JSON.
+	 * Description of an application context's {@link SpringLiquibase} beans.
 	 */
-	public static final class ContextLiquibaseBeans {
+	public static final class ContextLiquibaseBeansDescriptor {
 
-		private final Map<String, LiquibaseBean> liquibaseBeans;
+		private final Map<String, LiquibaseBeanDescriptor> liquibaseBeans;
 
 		private final String parentId;
 
-		private ContextLiquibaseBeans(Map<String, LiquibaseBean> liquibaseBeans,
-				String parentId) {
+		private ContextLiquibaseBeansDescriptor(Map<String, LiquibaseBeanDescriptor> liquibaseBeans, String parentId) {
 			this.liquibaseBeans = liquibaseBeans;
 			this.parentId = parentId;
 		}
 
-		public Map<String, LiquibaseBean> getLiquibaseBeans() {
+		public Map<String, LiquibaseBeanDescriptor> getLiquibaseBeans() {
 			return this.liquibaseBeans;
 		}
 
@@ -144,27 +146,26 @@ public class LiquibaseEndpoint {
 	}
 
 	/**
-	 * Description of a {@link SpringLiquibase} bean, primarily intended for serialization
-	 * to JSON.
+	 * Description of a {@link SpringLiquibase} bean.
 	 */
-	public static final class LiquibaseBean {
+	public static final class LiquibaseBeanDescriptor {
 
-		private final List<ChangeSet> changeSets;
+		private final List<ChangeSetDescriptor> changeSets;
 
-		public LiquibaseBean(List<ChangeSet> changeSets) {
+		public LiquibaseBeanDescriptor(List<ChangeSetDescriptor> changeSets) {
 			this.changeSets = changeSets;
 		}
 
-		public List<ChangeSet> getChangeSets() {
+		public List<ChangeSetDescriptor> getChangeSets() {
 			return this.changeSets;
 		}
 
 	}
 
 	/**
-	 * A Liquibase change set.
+	 * Description of a Liquibase change set.
 	 */
-	public static class ChangeSet {
+	public static class ChangeSetDescriptor {
 
 		private final String author;
 
@@ -192,20 +193,19 @@ public class LiquibaseEndpoint {
 
 		private final String tag;
 
-		public ChangeSet(RanChangeSet ranChangeSet) {
+		public ChangeSetDescriptor(RanChangeSet ranChangeSet) {
 			this.author = ranChangeSet.getAuthor();
 			this.changeLog = ranChangeSet.getChangeLog();
 			this.comments = ranChangeSet.getComments();
 			this.contexts = ranChangeSet.getContextExpression().getContexts();
-			this.dateExecuted = Instant
-					.ofEpochMilli(ranChangeSet.getDateExecuted().getTime());
+			this.dateExecuted = Instant.ofEpochMilli(ranChangeSet.getDateExecuted().getTime());
 			this.deploymentId = ranChangeSet.getDeploymentId();
 			this.description = ranChangeSet.getDescription();
 			this.execType = ranChangeSet.getExecType();
 			this.id = ranChangeSet.getId();
 			this.labels = ranChangeSet.getLabels().getLabels();
-			this.checksum = ranChangeSet.getLastCheckSum() == null ? null
-					: ranChangeSet.getLastCheckSum().toString();
+			this.checksum = ((ranChangeSet.getLastCheckSum() != null) ? ranChangeSet.getLastCheckSum().toString()
+					: null);
 			this.orderExecuted = ranChangeSet.getOrderExecuted();
 			this.tag = ranChangeSet.getTag();
 		}
@@ -265,13 +265,13 @@ public class LiquibaseEndpoint {
 	}
 
 	/**
-	 * A context expression in a {@link ChangeSet}.
+	 * Description of a context expression in a {@link ChangeSetDescriptor}.
 	 */
-	public static class ContextExpression {
+	public static class ContextExpressionDescriptor {
 
 		private final Set<String> contexts;
 
-		public ContextExpression(Set<String> contexts) {
+		public ContextExpressionDescriptor(Set<String> contexts) {
 			this.contexts = contexts;
 		}
 

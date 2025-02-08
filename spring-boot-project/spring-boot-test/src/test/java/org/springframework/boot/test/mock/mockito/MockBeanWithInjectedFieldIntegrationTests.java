@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,11 +18,11 @@ package org.springframework.boot.test.mock.mockito;
 
 import java.util.List;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
@@ -31,31 +31,34 @@ import static org.mockito.BDDMockito.given;
  * Tests for a mock bean where the class being mocked uses field injection.
  *
  * @author Andy Wilkinson
+ * @deprecated since 3.4.0 for removal in 3.6.0
  */
-@RunWith(SpringRunner.class)
-public class MockBeanWithInjectedFieldIntegrationTests {
+@SuppressWarnings("removal")
+@Deprecated(since = "3.4.0", forRemoval = true)
+@ExtendWith(SpringExtension.class)
+class MockBeanWithInjectedFieldIntegrationTests {
 
 	@MockBean
 	private MyService myService;
 
 	@Test
-	public void fieldInjectionIntoMyServiceMockIsNotAttempted() {
+	void fieldInjectionIntoMyServiceMockIsNotAttempted() {
 		given(this.myService.getCount()).willReturn(5);
 		assertThat(this.myService.getCount()).isEqualTo(5);
 	}
 
-	private static class MyService {
+	static class MyService {
 
 		@Autowired
 		private MyRepository repository;
 
-		public int getCount() {
+		int getCount() {
 			return this.repository.findAll().size();
 		}
 
 	}
 
-	private interface MyRepository {
+	interface MyRepository {
 
 		List<Object> findAll();
 

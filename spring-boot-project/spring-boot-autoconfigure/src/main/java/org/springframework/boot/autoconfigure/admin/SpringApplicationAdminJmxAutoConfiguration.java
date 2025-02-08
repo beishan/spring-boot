@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,19 +16,16 @@
 
 package org.springframework.boot.autoconfigure.admin;
 
-import java.util.List;
-
 import javax.management.MalformedObjectNameException;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.admin.SpringApplicationAdminMXBean;
 import org.springframework.boot.admin.SpringApplicationAdminMXBeanRegistrar;
-import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.jmx.JmxAutoConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.jmx.export.MBeanExporter;
 
@@ -41,9 +38,8 @@ import org.springframework.jmx.export.MBeanExporter;
  * @since 1.3.0
  * @see SpringApplicationAdminMXBean
  */
-@Configuration
-@AutoConfigureAfter(JmxAutoConfiguration.class)
-@ConditionalOnProperty(prefix = "spring.application.admin", value = "enabled", havingValue = "true", matchIfMissing = false)
+@AutoConfiguration(after = JmxAutoConfiguration.class)
+@ConditionalOnBooleanProperty("spring.application.admin.enabled")
 public class SpringApplicationAdminJmxAutoConfiguration {
 
 	/**
@@ -57,24 +53,13 @@ public class SpringApplicationAdminJmxAutoConfiguration {
 	 */
 	private static final String DEFAULT_JMX_NAME = "org.springframework.boot:type=Admin,name=SpringApplication";
 
-	private final List<MBeanExporter> mbeanExporters;
-
-	private final Environment environment;
-
-	public SpringApplicationAdminJmxAutoConfiguration(
-			ObjectProvider<List<MBeanExporter>> mbeanExporters, Environment environment) {
-		this.mbeanExporters = mbeanExporters.getIfAvailable();
-		this.environment = environment;
-	}
-
 	@Bean
 	@ConditionalOnMissingBean
-	public SpringApplicationAdminMXBeanRegistrar springApplicationAdminRegistrar()
-			throws MalformedObjectNameException {
-		String jmxName = this.environment.getProperty(JMX_NAME_PROPERTY,
-				DEFAULT_JMX_NAME);
-		if (this.mbeanExporters != null) { // Make sure to not register that MBean twice
-			for (MBeanExporter mbeanExporter : this.mbeanExporters) {
+	public SpringApplicationAdminMXBeanRegistrar springApplicationAdminRegistrar(
+			ObjectProvider<MBeanExporter> mbeanExporters, Environment environment) throws MalformedObjectNameException {
+		String jmxName = environment.getProperty(JMX_NAME_PROPERTY, DEFAULT_JMX_NAME);
+		if (mbeanExporters != null) { // Make sure to not register that MBean twice
+			for (MBeanExporter mbeanExporter : mbeanExporters) {
 				mbeanExporter.addExcludedBean(jmxName);
 			}
 		}

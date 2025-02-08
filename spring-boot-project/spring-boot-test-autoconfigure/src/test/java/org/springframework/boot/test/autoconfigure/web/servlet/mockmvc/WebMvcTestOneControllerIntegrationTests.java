@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,39 +16,36 @@
 
 package org.springframework.boot.test.autoconfigure.web.servlet.mockmvc;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.test.context.junit4.SpringRunner;
-import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests for {@link WebMvcTest} when a specific controller is defined.
+ * Tests for {@link WebMvcTest @WebMvcTest} when a specific controller is defined.
  *
  * @author Phillip Webb
  */
-@RunWith(SpringRunner.class)
-@WebMvcTest(controllers = ExampleController2.class, secure = false)
-public class WebMvcTestOneControllerIntegrationTests {
+@WebMvcTest(controllers = ExampleController2.class)
+@WithMockUser
+class WebMvcTestOneControllerIntegrationTests {
 
 	@Autowired
-	private MockMvc mvc;
+	private MockMvcTester mvc;
 
 	@Test
-	public void shouldNotFindController1() throws Exception {
-		this.mvc.perform(get("/one")).andExpect(status().isNotFound());
+	void shouldNotFindController1() {
+		assertThat(this.mvc.get().uri("/one")).hasStatus(HttpStatus.NOT_FOUND);
 	}
 
 	@Test
-	public void shouldFindController2() throws Exception {
-		this.mvc.perform(get("/two")).andExpect(content().string("hellotwo"))
-				.andExpect(status().isOk());
+	void shouldFindController2() {
+		assertThat(this.mvc.get().uri("/two")).hasStatusOk().hasBodyTextEqualTo("hellotwo");
 	}
 
 }

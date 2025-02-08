@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,6 +21,7 @@ import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.Set;
 
+import org.springframework.boot.context.properties.NestedConfigurationProperty;
 import org.springframework.boot.convert.DurationUnit;
 
 /**
@@ -31,20 +32,11 @@ import org.springframework.boot.convert.DurationUnit;
  */
 public class Session {
 
-	/**
-	 * Session timeout. If a duration suffix is not specified, seconds will be used.
-	 */
 	@DurationUnit(ChronoUnit.SECONDS)
 	private Duration timeout = Duration.ofMinutes(30);
 
-	/**
-	 * Session tracking modes (one or more of the following: "cookie", "url", "ssl").
-	 */
 	private Set<Session.SessionTrackingMode> trackingModes;
 
-	/**
-	 * Whether to persist session data between restarts.
-	 */
 	private boolean persistent;
 
 	/**
@@ -52,13 +44,10 @@ public class Session {
 	 */
 	private File storeDir;
 
+	@NestedConfigurationProperty
 	private final Cookie cookie = new Cookie();
 
 	private final SessionStoreDirectory sessionStoreDirectory = new SessionStoreDirectory();
-
-	public Cookie getCookie() {
-		return this.cookie;
-	}
 
 	public Duration getTimeout() {
 		return this.timeout;
@@ -68,6 +57,10 @@ public class Session {
 		this.timeout = timeout;
 	}
 
+	/**
+	 * Return the {@link SessionTrackingMode session tracking modes}.
+	 * @return the session tracking modes
+	 */
 	public Set<Session.SessionTrackingMode> getTrackingModes() {
 		return this.trackingModes;
 	}
@@ -76,6 +69,10 @@ public class Session {
 		this.trackingModes = trackingModes;
 	}
 
+	/**
+	 * Return whether to persist session data between restarts.
+	 * @return {@code true} to persist session data between restarts.
+	 */
 	public boolean isPersistent() {
 		return this.persistent;
 	}
@@ -84,6 +81,10 @@ public class Session {
 		this.persistent = persistent;
 	}
 
+	/**
+	 * Return the directory used to store session data.
+	 * @return the session data store directory
+	 */
 	public File getStoreDir() {
 		return this.storeDir;
 	}
@@ -93,112 +94,26 @@ public class Session {
 		this.storeDir = storeDir;
 	}
 
+	public Cookie getCookie() {
+		return this.cookie;
+	}
+
 	SessionStoreDirectory getSessionStoreDirectory() {
 		return this.sessionStoreDirectory;
 	}
 
 	/**
-	 * Cookie properties.
+	 * Session cookie properties. This class is provided only for back-compatibility
+	 * reasons, consider using {@link org.springframework.boot.web.server.Cookie} whenever
+	 * possible.
 	 */
-	public static class Cookie {
-
-		/**
-		 * Session cookie name.
-		 */
-		private String name;
-
-		/**
-		 * Domain for the session cookie.
-		 */
-		private String domain;
-
-		/**
-		 * Path of the session cookie.
-		 */
-		private String path;
-
-		/**
-		 * Comment for the session cookie.
-		 */
-		private String comment;
-
-		/**
-		 * "HttpOnly" flag for the session cookie.
-		 */
-		private Boolean httpOnly;
-
-		/**
-		 * "Secure" flag for the session cookie.
-		 */
-		private Boolean secure;
-
-		/**
-		 * Maximum age of the session cookie.
-		 */
-		@DurationUnit(ChronoUnit.SECONDS)
-		private Duration maxAge;
-
-		public String getName() {
-			return this.name;
-		}
-
-		public void setName(String name) {
-			this.name = name;
-		}
-
-		public String getDomain() {
-			return this.domain;
-		}
-
-		public void setDomain(String domain) {
-			this.domain = domain;
-		}
-
-		public String getPath() {
-			return this.path;
-		}
-
-		public void setPath(String path) {
-			this.path = path;
-		}
-
-		public String getComment() {
-			return this.comment;
-		}
-
-		public void setComment(String comment) {
-			this.comment = comment;
-		}
-
-		public Boolean getHttpOnly() {
-			return this.httpOnly;
-		}
-
-		public void setHttpOnly(Boolean httpOnly) {
-			this.httpOnly = httpOnly;
-		}
-
-		public Boolean getSecure() {
-			return this.secure;
-		}
-
-		public void setSecure(Boolean secure) {
-			this.secure = secure;
-		}
-
-		public Duration getMaxAge() {
-			return this.maxAge;
-		}
-
-		public void setMaxAge(Duration maxAge) {
-			this.maxAge = maxAge;
-		}
+	public static class Cookie extends org.springframework.boot.web.server.Cookie {
 
 	}
 
 	/**
 	 * Available session tracking modes (mirrors
-	 * {@link javax.servlet.SessionTrackingMode}.
+	 * {@link jakarta.servlet.SessionTrackingMode}).
 	 */
 	public enum SessionTrackingMode {
 

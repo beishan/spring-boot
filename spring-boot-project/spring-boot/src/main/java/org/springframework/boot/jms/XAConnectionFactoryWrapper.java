@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2021 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,9 +16,9 @@
 
 package org.springframework.boot.jms;
 
-import javax.jms.ConnectionFactory;
-import javax.jms.XAConnectionFactory;
-import javax.transaction.TransactionManager;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.XAConnectionFactory;
+import jakarta.transaction.TransactionManager;
 
 /**
  * Strategy interface used to wrap a JMS {@link XAConnectionFactory} enrolling it with a
@@ -37,7 +37,6 @@ public interface XAConnectionFactoryWrapper {
 	 * @return the wrapped connection factory
 	 * @throws Exception if the connection factory cannot be wrapped
 	 */
-	ConnectionFactory wrapConnectionFactory(XAConnectionFactory connectionFactory)
-			throws Exception;
+	ConnectionFactory wrapConnectionFactory(XAConnectionFactory connectionFactory) throws Exception;
 
 }

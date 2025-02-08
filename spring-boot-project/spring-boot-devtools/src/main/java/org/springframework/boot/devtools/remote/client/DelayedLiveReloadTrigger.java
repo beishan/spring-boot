@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -32,7 +32,7 @@ import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.util.Assert;
 
 /**
- * {@link Runnable} that waits to triggers live reload until the remote server has
+ * {@link Runnable} that waits to trigger live reload until the remote server has
  * restarted.
  *
  * @author Phillip Webb
@@ -59,11 +59,11 @@ class DelayedLiveReloadTrigger implements Runnable {
 
 	private long timeout = TIMEOUT;
 
-	DelayedLiveReloadTrigger(OptionalLiveReloadServer liveReloadServer,
-			ClientHttpRequestFactory requestFactory, String url) {
-		Assert.notNull(liveReloadServer, "LiveReloadServer must not be null");
-		Assert.notNull(requestFactory, "RequestFactory must not be null");
-		Assert.hasLength(url, "URL must not be empty");
+	DelayedLiveReloadTrigger(OptionalLiveReloadServer liveReloadServer, ClientHttpRequestFactory requestFactory,
+			String url) {
+		Assert.notNull(liveReloadServer, "'liveReloadServer' must not be null");
+		Assert.notNull(requestFactory, "'requestFactory' must not be null");
+		Assert.hasLength(url, "'url' must not be empty");
 		this.liveReloadServer = liveReloadServer;
 		this.requestFactory = requestFactory;
 		try {
@@ -103,8 +103,9 @@ class DelayedLiveReloadTrigger implements Runnable {
 	private boolean isUp() {
 		try {
 			ClientHttpRequest request = createRequest();
-			ClientHttpResponse response = request.execute();
-			return response.getStatusCode() == HttpStatus.OK;
+			try (ClientHttpResponse response = request.execute()) {
+				return response.getStatusCode() == HttpStatus.OK;
+			}
 		}
 		catch (Exception ex) {
 			return false;

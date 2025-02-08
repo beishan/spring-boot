@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,26 +19,27 @@ package org.springframework.boot.web.servlet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import javax.servlet.Registration;
-import javax.servlet.ServletContext;
-
+import jakarta.servlet.Registration;
+import jakarta.servlet.ServletContext;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
+import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.core.Conventions;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 /**
- * Base class for Servlet 3.0+ {@link javax.servlet.Registration.Dynamic dynamic} based
+ * Base class for Servlet 3.0+ {@link jakarta.servlet.Registration.Dynamic dynamic} based
  * registration beans.
  *
- * @param <D> The dynamic registration result
+ * @param <D> the dynamic registration result
  * @author Phillip Webb
+ * @author Moritz Halbritter
  * @since 2.0.0
  */
-public abstract class DynamicRegistrationBean<D extends Registration.Dynamic>
-		extends RegistrationBean {
+public abstract class DynamicRegistrationBean<D extends Registration.Dynamic> extends RegistrationBean
+		implements BeanNameAware {
 
 	private static final Log logger = LogFactory.getLog(RegistrationBean.class);
 
@@ -48,12 +49,16 @@ public abstract class DynamicRegistrationBean<D extends Registration.Dynamic>
 
 	private Map<String, String> initParameters = new LinkedHashMap<>();
 
+	private String beanName;
+
+	private boolean ignoreRegistrationFailure;
+
 	/**
 	 * Set the name of this registration. If not specified the bean name will be used.
 	 * @param name the name of the registration
 	 */
 	public void setName(String name) {
-		Assert.hasLength(name, "Name must not be empty");
+		Assert.hasLength(name, "'name' must not be empty");
 		this.name = name;
 	}
 
@@ -82,7 +87,7 @@ public abstract class DynamicRegistrationBean<D extends Registration.Dynamic>
 	 * @see #addInitParameter
 	 */
 	public void setInitParameters(Map<String, String> initParameters) {
-		Assert.notNull(initParameters, "InitParameters must not be null");
+		Assert.notNull(initParameters, "'initParameters' must not be null");
 		this.initParameters = new LinkedHashMap<>(initParameters);
 	}
 
@@ -100,7 +105,7 @@ public abstract class DynamicRegistrationBean<D extends Registration.Dynamic>
 	 * @param value the init-parameter value
 	 */
 	public void addInitParameter(String name, String value) {
-		Assert.notNull(name, "Name must not be null");
+		Assert.notNull(name, "'name' must not be null");
 		this.initParameters.put(name, value);
 	}
 
@@ -108,15 +113,33 @@ public abstract class DynamicRegistrationBean<D extends Registration.Dynamic>
 	protected final void register(String description, ServletContext servletContext) {
 		D registration = addRegistration(description, servletContext);
 		if (registration == null) {
-			logger.info(StringUtils.capitalize(description) + " was not registered "
-					+ "(possibly already registered?)");
-			return;
+			if (this.ignoreRegistrationFailure) {
+				logger.info(StringUtils.capitalize(description) + " was not registered (possibly already registered?)");
+				return;
+			}
+			throw new IllegalStateException(
+					"Failed to register '%s' on the servlet context. Possibly already registered?"
+						.formatted(description));
 		}
 		configure(registration);
 	}
 
-	protected abstract D addRegistration(String description,
-			ServletContext servletContext);
+	/**
+	 * Sets whether registration failures should be ignored. If set to true, a failure
+	 * will be logged. If set to false, an {@link IllegalStateException} will be thrown.
+	 * @param ignoreRegistrationFailure whether to ignore registration failures
+	 * @since 3.1.0
+	 */
+	public void setIgnoreRegistrationFailure(boolean ignoreRegistrationFailure) {
+		this.ignoreRegistrationFailure = ignoreRegistrationFailure;
+	}
+
+	@Override
+	public void setBeanName(String name) {
+		this.beanName = name;
+	}
+
+	protected abstract D addRegistration(String description, ServletContext servletContext);
 
 	protected void configure(D registration) {
 		registration.setAsyncSupported(this.asyncSupported);
@@ -127,12 +150,19 @@ public abstract class DynamicRegistrationBean<D extends Registration.Dynamic>
 
 	/**
 	 * Deduces the name for this registration. Will return user specified name or fallback
-	 * to convention based naming.
+	 * to the bean name. If the bean name is not available, convention based naming is
+	 * used.
 	 * @param value the object used for convention based names
 	 * @return the deduced name
 	 */
 	protected final String getOrDeduceName(Object value) {
-		return (this.name != null ? this.name : Conventions.getVariableName(value));
+		if (this.name != null) {
+			return this.name;
+		}
+		if (this.beanName != null) {
+			return this.beanName;
+		}
+		return Conventions.getVariableName(value);
 	}
 
 }

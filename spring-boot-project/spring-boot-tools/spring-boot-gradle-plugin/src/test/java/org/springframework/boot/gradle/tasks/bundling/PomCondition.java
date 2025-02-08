@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -35,17 +35,17 @@ import org.springframework.util.FileCopyUtils;
  */
 class PomCondition extends Condition<File> {
 
-	private Set<String> expectedContents;
+	private final Set<String> expectedContents;
 
-	private Set<String> notExpectedContents;
+	private final Set<String> notExpectedContents;
 
 	PomCondition() {
 		this(new HashSet<>(), new HashSet<>());
 	}
 
 	private PomCondition(Set<String> expectedContents, Set<String> notExpectedContents) {
-		super(new TextDescription("Pom file containing %s and not containing %s",
-				expectedContents, notExpectedContents));
+		super(new TextDescription("Pom file containing %s and not containing %s", expectedContents,
+				notExpectedContents));
 		this.expectedContents = expectedContents;
 		this.notExpectedContents = notExpectedContents;
 	}
@@ -73,8 +73,8 @@ class PomCondition extends Condition<File> {
 
 	@Override
 	public Description description() {
-		return new TextDescription("Pom file containing %s and not containing %s",
-				this.expectedContents, this.notExpectedContents);
+		return new TextDescription("Pom file containing %s and not containing %s", this.expectedContents,
+				this.notExpectedContents);
 	}
 
 	PomCondition groupId(String groupId) {
@@ -83,8 +83,7 @@ class PomCondition extends Condition<File> {
 	}
 
 	PomCondition artifactId(String artifactId) {
-		this.expectedContents
-				.add(String.format("<artifactId>%s</artifactId>", artifactId));
+		this.expectedContents.add(String.format("<artifactId>%s</artifactId>", artifactId));
 		return this;
 	}
 

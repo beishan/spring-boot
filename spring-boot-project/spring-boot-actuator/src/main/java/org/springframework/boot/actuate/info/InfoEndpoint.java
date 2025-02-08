@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,12 +19,13 @@ package org.springframework.boot.actuate.info;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.boot.actuate.endpoint.OperationResponseBody;
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
 import org.springframework.util.Assert;
 
 /**
- * {@link Endpoint} to expose arbitrary application information.
+ * {@link Endpoint @Endpoint} to expose arbitrary application information.
  *
  * @author Dave Syer
  * @author Meang Akira Tanaka
@@ -41,7 +42,7 @@ public class InfoEndpoint {
 	 * @param infoContributors the info contributors to use
 	 */
 	public InfoEndpoint(List<InfoContributor> infoContributors) {
-		Assert.notNull(infoContributors, "Info contributors must not be null");
+		Assert.notNull(infoContributors, "'infoContributors' must not be null");
 		this.infoContributors = infoContributors;
 	}
 
@@ -51,8 +52,7 @@ public class InfoEndpoint {
 		for (InfoContributor contributor : this.infoContributors) {
 			contributor.contribute(builder);
 		}
-		Info build = builder.build();
-		return build.getDetails();
+		return OperationResponseBody.of(builder.build().getDetails());
 	}
 
 }

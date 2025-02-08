@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,14 +16,18 @@
 
 package org.springframework.boot.json;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import org.assertj.core.api.InstanceOfAssertFactories;
+import org.junit.jupiter.api.Test;
+
+import org.springframework.util.StreamUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 /**
  * Base for {@link JsonParser} tests.
@@ -32,142 +36,183 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Jean de Klerk
  * @author Stephane Nicoll
  */
-public abstract class AbstractJsonParserTests {
-
-	@Rule
-	public ExpectedException thrown = ExpectedException.none();
+abstract class AbstractJsonParserTests {
 
 	private final JsonParser parser = getParser();
 
 	protected abstract JsonParser getParser();
 
 	@Test
-	public void simpleMap() {
+	void simpleMap() {
 		Map<String, Object> map = this.parser.parseMap("{\"foo\":\"bar\",\"spam\":1}");
 		assertThat(map).hasSize(2);
-		assertThat(map.get("foo")).isEqualTo("bar");
-		assertThat(((Number) map.get("spam")).longValue()).isEqualTo(1L);
+		assertThat(map).containsEntry("foo", "bar");
+		assertThat(((Number) map.get("spam")).longValue()).isOne();
 	}
 
 	@Test
-	public void doubleValue() {
+	void doubleValue() {
 		Map<String, Object> map = this.parser.parseMap("{\"foo\":\"bar\",\"spam\":1.23}");
 		assertThat(map).hasSize(2);
-		assertThat(map.get("foo")).isEqualTo("bar");
-		assertThat(map.get("spam")).isEqualTo(1.23d);
+		assertThat(map).containsEntry("foo", "bar");
+		assertThat(map).containsEntry("spam", 1.23d);
 	}
 
 	@Test
-	public void stringContainingNumber() {
+	void stringContainingNumber() {
 		Map<String, Object> map = this.parser.parseMap("{\"foo\":\"123\"}");
 		assertThat(map).hasSize(1);
-		assertThat(map.get("foo")).isEqualTo("123");
+		assertThat(map).containsEntry("foo", "123");
 	}
 
 	@Test
-	public void stringContainingComma() {
+	void stringContainingComma() {
 		Map<String, Object> map = this.parser.parseMap("{\"foo\":\"bar1,bar2\"}");
 		assertThat(map).hasSize(1);
-		assertThat(map.get("foo")).isEqualTo("bar1,bar2");
+		assertThat(map).containsEntry("foo", "bar1,bar2");
 	}
 
 	@Test
-	public void emptyMap() {
+	void emptyMap() {
 		Map<String, Object> map = this.parser.parseMap("{}");
 		assertThat(map).isEmpty();
 	}
 
 	@Test
-	public void simpleList() {
+	void simpleList() {
 		List<Object> list = this.parser.parseList("[\"foo\",\"bar\",1]");
 		assertThat(list).hasSize(3);
 		assertThat(list.get(1)).isEqualTo("bar");
 	}
 
 	@Test
-	public void emptyList() {
+	void emptyList() {
 		List<Object> list = this.parser.parseList("[]");
 		assertThat(list).isEmpty();
 	}
 
 	@SuppressWarnings("unchecked")
 	@Test
-	public void listOfMaps() {
-		List<Object> list = this.parser
-				.parseList("[{\"foo\":\"bar\",\"spam\":1},{\"foo\":\"baz\",\"spam\":2}]");
+	void listOfMaps() {
+		List<Object> list = this.parser.parseList("[{\"foo\":\"bar\",\"spam\":1},{\"foo\":\"baz\",\"spam\":2}]");
 		assertThat(list).hasSize(2);
 		assertThat(((Map<String, Object>) list.get(1))).hasSize(2);
 	}
 
 	@SuppressWarnings("unchecked")
 	@Test
-	public void mapOfLists() {
-		Map<String, Object> map = this.parser.parseMap(
-				"{\"foo\":[{\"foo\":\"bar\",\"spam\":1},{\"foo\":\"baz\",\"spam\":2}]}");
+	void mapOfLists() {
+		Map<String, Object> map = this.parser
+			.parseMap("{\"foo\":[{\"foo\":\"bar\",\"spam\":1},{\"foo\":\"baz\",\"spam\":2}]}");
 		assertThat(map).hasSize(1);
 		assertThat(((List<Object>) map.get("foo"))).hasSize(2);
+		assertThat(map.get("foo")).asInstanceOf(InstanceOfAssertFactories.LIST).allMatch(Map.class::isInstance);
+	}
+
+	@SuppressWarnings("unchecked")
+	@Test
+	void nestedLeadingAndTrailingWhitespace() {
+		Map<String, Object> map = this.parser
+			.parseMap(" {\"foo\": [ { \"foo\" : \"bar\" , \"spam\" : 1 } , { \"foo\" : \"baz\" , \"spam\" : 2 } ] } ");
+		assertThat(map).hasSize(1);
+		assertThat(((List<Object>) map.get("foo"))).hasSize(2);
+		assertThat(map.get("foo")).asInstanceOf(InstanceOfAssertFactories.LIST).allMatch(Map.class::isInstance);
 	}
 
 	@Test
-	public void mapWithNullThrowsARuntimeException() {
-		this.thrown.expect(RuntimeException.class);
-		this.parser.parseMap(null);
+	void mapWithNullThrowsARuntimeException() {
+		assertThatExceptionOfType(RuntimeException.class).isThrownBy(() -> this.parser.parseMap(null));
 	}
 
 	@Test
-	public void listWithNullThrowsARuntimeException() {
-		this.thrown.expect(RuntimeException.class);
-		this.parser.parseList(null);
+	void listWithNullThrowsARuntimeException() {
+		assertThatExceptionOfType(RuntimeException.class).isThrownBy(() -> this.parser.parseList(null));
 	}
 
 	@Test
-	public void mapWithEmptyStringThrowsARuntimeException() {
-		this.thrown.expect(RuntimeException.class);
-		this.parser.parseMap("");
+	void mapWithEmptyStringThrowsARuntimeException() {
+		assertThatExceptionOfType(RuntimeException.class).isThrownBy(() -> this.parser.parseMap(""));
 	}
 
 	@Test
-	public void listWithEmptyStringThrowsARuntimeException() {
-		this.thrown.expect(RuntimeException.class);
-		this.parser.parseList("");
+	void listWithEmptyStringThrowsARuntimeException() {
+		assertThatExceptionOfType(RuntimeException.class).isThrownBy(() -> this.parser.parseList(""));
 	}
 
 	@Test
-	public void mapWithListThrowsARuntimeException() {
-		this.thrown.expect(RuntimeException.class);
-		this.parser.parseMap("[]");
+	void mapWithListThrowsARuntimeException() {
+		assertThatExceptionOfType(RuntimeException.class).isThrownBy(() -> this.parser.parseMap("[]"));
 	}
 
 	@Test
-	public void listWithMapThrowsARuntimeException() {
-		this.thrown.expect(RuntimeException.class);
-		this.parser.parseList("{}");
+	void listWithMapThrowsARuntimeException() {
+		assertThatExceptionOfType(RuntimeException.class).isThrownBy(() -> this.parser.parseList("{}"));
 	}
 
 	@Test
-	public void listWithLeadingWhitespace() {
+	void listWithLeadingWhitespace() {
 		List<Object> list = this.parser.parseList("\n\t[\"foo\"]");
 		assertThat(list).hasSize(1);
 		assertThat(list.get(0)).isEqualTo("foo");
 	}
 
 	@Test
-	public void mapWithLeadingWhitespace() {
+	void mapWithLeadingWhitespace() {
 		Map<String, Object> map = this.parser.parseMap("\n\t{\"foo\":\"bar\"}");
 		assertThat(map).hasSize(1);
-		assertThat(map.get("foo")).isEqualTo("bar");
+		assertThat(map).containsEntry("foo", "bar");
 	}
 
 	@Test
-	public void mapWithLeadingWhitespaceListThrowsARuntimeException() {
-		this.thrown.expect(RuntimeException.class);
-		this.parser.parseMap("\n\t[]");
+	void mapWithLeadingWhitespaceListThrowsARuntimeException() {
+		assertThatExceptionOfType(RuntimeException.class).isThrownBy(() -> this.parser.parseMap("\n\t[]"));
 	}
 
 	@Test
-	public void listWithLeadingWhitespaceMapThrowsARuntimeException() {
-		this.thrown.expect(RuntimeException.class);
-		this.parser.parseList("\n\t{}");
+	void listWithLeadingWhitespaceMapThrowsARuntimeException() {
+		assertThatExceptionOfType(RuntimeException.class).isThrownBy(() -> this.parser.parseList("\n\t{}"));
+	}
+
+	@Test
+	void escapeDoubleQuote() {
+		String input = "{\"foo\": \"\\\"bar\\\"\"}";
+		Map<String, Object> map = this.parser.parseMap(input);
+		assertThat(map).containsEntry("foo", "\"bar\"");
+	}
+
+	@Test
+	void listWithMalformedMap() {
+		assertThatExceptionOfType(JsonParseException.class)
+			.isThrownBy(() -> this.parser.parseList("[tru,erqett,{\"foo\":fatrue,true,true,true,tr''ue}]"));
+	}
+
+	@Test
+	void mapWithKeyAndNoValue() {
+		assertThatExceptionOfType(JsonParseException.class).isThrownBy(() -> this.parser.parseMap("{\"foo\"}"));
+	}
+
+	@Test // gh-31868
+	void listWithRepeatedOpenArray() throws IOException {
+		String input = StreamUtils.copyToString(
+				AbstractJsonParserTests.class.getResourceAsStream("repeated-open-array.txt"), StandardCharsets.UTF_8);
+		assertThatExceptionOfType(JsonParseException.class).isThrownBy(() -> this.parser.parseList(input))
+			.havingCause()
+			.withMessageContaining("too deeply nested");
+	}
+
+	@Test // gh-31869
+	void largeMalformed() throws IOException {
+		String input = StreamUtils.copyToString(
+				AbstractJsonParserTests.class.getResourceAsStream("large-malformed-json.txt"), StandardCharsets.UTF_8);
+		assertThatExceptionOfType(JsonParseException.class).isThrownBy(() -> this.parser.parseList(input));
+	}
+
+	@Test // gh-32029
+	void deeplyNestedMap() throws IOException {
+		String input = StreamUtils.copyToString(
+				AbstractJsonParserTests.class.getResourceAsStream("deeply-nested-map-json.txt"),
+				StandardCharsets.UTF_8);
+		assertThatExceptionOfType(JsonParseException.class).isThrownBy(() -> this.parser.parseList(input));
 	}
 
 }

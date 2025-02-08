@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,7 +22,6 @@ import java.lang.reflect.Field;
 import java.net.URL;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
@@ -30,6 +29,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.ThreadFactory;
@@ -46,7 +46,6 @@ import org.springframework.boot.devtools.restart.FailureHandler.Outcome;
 import org.springframework.boot.devtools.restart.classloader.ClassLoaderFiles;
 import org.springframework.boot.devtools.restart.classloader.RestartClassLoader;
 import org.springframework.boot.logging.DeferredLog;
-import org.springframework.boot.system.JavaVersion;
 import org.springframework.cglib.core.ClassNameReader;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.support.GenericApplicationContext;
@@ -69,9 +68,9 @@ import org.springframework.util.ReflectionUtils;
  * {@link #initialize(String[])} directly if your SpringApplication arguments are not
  * identical to your main method arguments.
  * <p>
- * By default, applications running in an IDE (i.e. those not packaged as "fat jars") will
- * automatically detect URLs that can change. It's also possible to manually configure
- * URLs or class file updates for remote restart scenarios.
+ * By default, applications running in an IDE (i.e. those not packaged as "uber jars")
+ * will automatically detect URLs that can change. It's also possible to manually
+ * configure URLs or class file updates for remote restart scenarios.
  *
  * @author Phillip Webb
  * @author Andy Wilkinson
@@ -93,7 +92,7 @@ public class Restarter {
 
 	private final ClassLoaderFiles classLoaderFiles = new ClassLoaderFiles();
 
-	private final Map<String, Object> attributes = new HashMap<>();
+	private final Map<String, Object> attributes = new ConcurrentHashMap<>();
 
 	private final BlockingDeque<LeakSafeThread> leakSafeThreads = new LinkedBlockingDeque<>();
 
@@ -107,7 +106,7 @@ public class Restarter {
 
 	private boolean enabled = true;
 
-	private URL[] initialUrls;
+	private final URL[] initialUrls;
 
 	private final String mainClassName;
 
@@ -129,12 +128,13 @@ public class Restarter {
 	 * @param initializer the restart initializer
 	 * @see #initialize(String[])
 	 */
-	protected Restarter(Thread thread, String[] args, boolean forceReferenceCleanup,
-			RestartInitializer initializer) {
-		Assert.notNull(thread, "Thread must not be null");
-		Assert.notNull(args, "Args must not be null");
-		Assert.notNull(initializer, "Initializer must not be null");
-		this.logger.debug("Creating new Restarter for thread " + thread);
+	protected Restarter(Thread thread, String[] args, boolean forceReferenceCleanup, RestartInitializer initializer) {
+		Assert.notNull(thread, "'thread' must not be null");
+		Assert.notNull(args, "'args' must not be null");
+		Assert.notNull(initializer, "'initializer' must not be null");
+		if (this.logger.isDebugEnabled()) {
+			this.logger.debug("Creating new Restarter for thread " + thread);
+		}
 		SilentExitExceptionHandler.setup(thread);
 		this.forceReferenceCleanup = forceReferenceCleanup;
 		this.initialUrls = initializer.getInitialUrls(thread);
@@ -208,7 +208,7 @@ public class Restarter {
 	 * @param urls the urls to add
 	 */
 	public void addUrls(Collection<URL> urls) {
-		Assert.notNull(urls, "Urls must not be null");
+		Assert.notNull(urls, "'urls' must not be null");
 		this.urls.addAll(urls);
 	}
 
@@ -217,7 +217,7 @@ public class Restarter {
 	 * @param classLoaderFiles the files to add
 	 */
 	public void addClassLoaderFiles(ClassLoaderFiles classLoaderFiles) {
-		Assert.notNull(classLoaderFiles, "ClassLoaderFiles must not be null");
+		Assert.notNull(classLoaderFiles, "'classLoaderFiles' must not be null");
 		this.classLoaderFiles.addAll(classLoaderFiles);
 	}
 
@@ -272,14 +272,12 @@ public class Restarter {
 	}
 
 	private Throwable doStart() throws Exception {
-		Assert.notNull(this.mainClassName, "Unable to find the main class to restart");
+		Assert.state(this.mainClassName != null, "Unable to find the main class to restart");
 		URL[] urls = this.urls.toArray(new URL[0]);
 		ClassLoaderFiles updatedFiles = new ClassLoaderFiles(this.classLoaderFiles);
-		ClassLoader classLoader = new RestartClassLoader(this.applicationClassLoader,
-				urls, updatedFiles, this.logger);
+		ClassLoader classLoader = new RestartClassLoader(this.applicationClassLoader, urls, updatedFiles);
 		if (this.logger.isDebugEnabled()) {
-			this.logger.debug("Starting application " + this.mainClassName + " with URLs "
-					+ Arrays.asList(urls));
+			this.logger.debug("Starting application " + this.mainClassName + " with URLs " + Arrays.asList(urls));
 		}
 		return relaunch(classLoader);
 	}
@@ -291,8 +289,8 @@ public class Restarter {
 	 * @throws Exception in case of errors
 	 */
 	protected Throwable relaunch(ClassLoader classLoader) throws Exception {
-		RestartLauncher launcher = new RestartLauncher(classLoader, this.mainClassName,
-				this.args, this.exceptionHandler);
+		RestartLauncher launcher = new RestartLauncher(classLoader, this.mainClassName, this.args,
+				this.exceptionHandler);
 		launcher.start();
 		launcher.join();
 		return launcher.getError();
@@ -322,54 +320,57 @@ public class Restarter {
 		System.runFinalization();
 	}
 
-	private void cleanupCaches() throws Exception {
+	private void cleanupCaches() {
 		Introspector.flushCaches();
 		cleanupKnownCaches();
 	}
 
-	private void cleanupKnownCaches() throws Exception {
-		// Whilst not strictly necessary it helps to cleanup soft reference caches
+	private void cleanupKnownCaches() {
+		// Whilst not strictly necessary it helps to clean up soft reference caches
 		// early rather than waiting for memory limits to be reached
-		clear(ResolvableType.class, "cache");
-		clear("org.springframework.core.SerializableTypeWrapper", "cache");
+		ResolvableType.clearCache();
+		cleanCachedIntrospectionResultsCache();
+		ReflectionUtils.clearCache();
+		clearAnnotationUtilsCache();
+	}
+
+	private void cleanCachedIntrospectionResultsCache() {
 		clear(CachedIntrospectionResults.class, "acceptedClassLoaders");
 		clear(CachedIntrospectionResults.class, "strongClassCache");
 		clear(CachedIntrospectionResults.class, "softClassCache");
-		clear(ReflectionUtils.class, "declaredFieldsCache");
-		clear(ReflectionUtils.class, "declaredMethodsCache");
-		clear(AnnotationUtils.class, "findAnnotationCache");
-		clear(AnnotationUtils.class, "annotatedInterfaceCache");
-		if (!JavaVersion.getJavaVersion().isEqualOrNewerThan(JavaVersion.NINE)) {
-			clear("com.sun.naming.internal.ResourceManager", "propertiesCache");
+	}
+
+	private void clearAnnotationUtilsCache() {
+		try {
+			AnnotationUtils.clearCache();
+		}
+		catch (Throwable ex) {
+			clear(AnnotationUtils.class, "findAnnotationCache");
+			clear(AnnotationUtils.class, "annotatedInterfaceCache");
 		}
 	}
 
-	private void clear(String className, String fieldName) {
+	private void clear(Class<?> type, String fieldName) {
 		try {
-			clear(Class.forName(className), fieldName);
+			Field field = type.getDeclaredField(fieldName);
+			field.setAccessible(true);
+			Object instance = field.get(null);
+			if (instance instanceof Set) {
+				((Set<?>) instance).clear();
+			}
+			if (instance instanceof Map) {
+				((Map<?, ?>) instance).keySet().removeIf(this::isFromRestartClassLoader);
+			}
 		}
 		catch (Exception ex) {
-			this.logger.debug("Unable to clear field " + className + " " + fieldName, ex);
-		}
-	}
-
-	private void clear(Class<?> type, String fieldName) throws Exception {
-		Field field = type.getDeclaredField(fieldName);
-		field.setAccessible(true);
-		Object instance = field.get(null);
-		if (instance instanceof Set) {
-			((Set<?>) instance).clear();
-		}
-		if (instance instanceof Map) {
-			((Map<?, ?>) instance).keySet().removeIf(this::isFromRestartClassLoader);
+			if (this.logger.isDebugEnabled()) {
+				this.logger.debug("Unable to clear field " + type + " " + fieldName, ex);
+			}
 		}
 	}
 
 	private boolean isFromRestartClassLoader(Object object) {
-		if (object instanceof Class) {
-			return ((Class<?>) object).getClassLoader() instanceof RestartClassLoader;
-		}
-		return false;
+		return (object instanceof Class && ((Class<?>) object).getClassLoader() instanceof RestartClassLoader);
 	}
 
 	/**
@@ -394,8 +395,7 @@ public class Restarter {
 	void finish() {
 		synchronized (this.monitor) {
 			if (!isFinished()) {
-				this.logger = DeferredLog.replay(this.logger,
-						LogFactory.getLog(getClass()));
+				this.logger = DeferredLog.replay(this.logger, LogFactory.getLog(getClass()));
 				this.finished = true;
 			}
 		}
@@ -408,11 +408,11 @@ public class Restarter {
 	}
 
 	void prepare(ConfigurableApplicationContext applicationContext) {
-		if (applicationContext != null && applicationContext.getParent() != null) {
+		if (!this.enabled || (applicationContext != null && applicationContext.getParent() != null)) {
 			return;
 		}
-		if (applicationContext instanceof GenericApplicationContext) {
-			prepare((GenericApplicationContext) applicationContext);
+		if (applicationContext instanceof GenericApplicationContext genericContext) {
+			prepare(genericContext);
 		}
 		this.rootContexts.add(applicationContext);
 	}
@@ -424,8 +424,8 @@ public class Restarter {
 	}
 
 	private void prepare(GenericApplicationContext applicationContext) {
-		ResourceLoader resourceLoader = new ClassLoaderFilesResourcePatternResolver(
-				applicationContext, this.classLoaderFiles);
+		ResourceLoader resourceLoader = new ClassLoaderFilesResourcePatternResolver(applicationContext,
+				this.classLoaderFiles);
 		applicationContext.setResourceLoader(resourceLoader);
 	}
 
@@ -440,18 +440,16 @@ public class Restarter {
 	}
 
 	public Object getOrAddAttribute(String name, final ObjectFactory<?> objectFactory) {
-		synchronized (this.attributes) {
-			if (!this.attributes.containsKey(name)) {
-				this.attributes.put(name, objectFactory.getObject());
-			}
-			return this.attributes.get(name);
+		Object value = this.attributes.get(name);
+		if (value == null) {
+			value = objectFactory.getObject();
+			this.attributes.put(name, value);
 		}
+		return value;
 	}
 
 	public Object removeAttribute(String name) {
-		synchronized (this.attributes) {
-			return this.attributes.remove(name);
-		}
+		return this.attributes.remove(name);
 	}
 
 	/**
@@ -510,8 +508,7 @@ public class Restarter {
 	 * @param initializer the restart initializer
 	 * @see #initialize(String[], boolean, RestartInitializer)
 	 */
-	public static void initialize(String[] args, boolean forceReferenceCleanup,
-			RestartInitializer initializer) {
+	public static void initialize(String[] args, boolean forceReferenceCleanup, RestartInitializer initializer) {
 		initialize(args, forceReferenceCleanup, initializer, true);
 	}
 
@@ -527,13 +524,12 @@ public class Restarter {
 	 * @param restartOnInitialize if the restarter should be restarted immediately when
 	 * the {@link RestartInitializer} returns non {@code null} results
 	 */
-	public static void initialize(String[] args, boolean forceReferenceCleanup,
-			RestartInitializer initializer, boolean restartOnInitialize) {
+	public static void initialize(String[] args, boolean forceReferenceCleanup, RestartInitializer initializer,
+			boolean restartOnInitialize) {
 		Restarter localInstance = null;
 		synchronized (INSTANCE_MONITOR) {
 			if (instance == null) {
-				localInstance = new Restarter(Thread.currentThread(), args,
-						forceReferenceCleanup, initializer);
+				localInstance = new Restarter(Thread.currentThread(), args, forceReferenceCleanup, initializer);
 				instance = localInstance;
 			}
 		}
@@ -587,13 +583,13 @@ public class Restarter {
 			setDaemon(false);
 		}
 
-		public void call(Callable<?> callable) {
+		void call(Callable<?> callable) {
 			this.callable = callable;
 			start();
 		}
 
 		@SuppressWarnings("unchecked")
-		public <V> V callAndWait(Callable<V> callable) {
+		<V> V callAndWait(Callable<V> callable) {
 			this.callable = callable;
 			start();
 			try {
@@ -626,7 +622,7 @@ public class Restarter {
 	/**
 	 * {@link ThreadFactory} that creates a leak safe thread.
 	 */
-	private class LeakSafeThreadFactory implements ThreadFactory {
+	private final class LeakSafeThreadFactory implements ThreadFactory {
 
 		@Override
 		public Thread newThread(Runnable runnable) {

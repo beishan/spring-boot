@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -25,6 +25,7 @@ import org.assertj.core.api.Condition;
 import org.hamcrest.collection.IsMapContaining;
 
 import org.springframework.boot.configurationprocessor.metadata.ItemMetadata.ItemType;
+import org.springframework.boot.configurationsample.Access;
 import org.springframework.util.ObjectUtils;
 
 /**
@@ -66,6 +67,10 @@ public final class Metadata {
 		return withProperty(key).ofType(Boolean.class);
 	}
 
+	public static Metadata.MetadataItemCondition withAccess(String key) {
+		return withProperty(key).ofType(Access.class);
+	}
+
 	public static MetadataHintCondition withHint(String name) {
 		return new MetadataHintCondition(name);
 	}
@@ -92,9 +97,8 @@ public final class Metadata {
 			this(itemType, name, null, null, null, null, null, null);
 		}
 
-		public MetadataItemCondition(ItemType itemType, String name, String type,
-				Class<?> sourceType, String sourceMethod, String description,
-				Object defaultValue, ItemDeprecation deprecation) {
+		public MetadataItemCondition(ItemType itemType, String name, String type, Class<?> sourceType,
+				String sourceMethod, String description, Object defaultValue, ItemDeprecation deprecation) {
 			this.itemType = itemType;
 			this.name = name;
 			this.type = type;
@@ -108,7 +112,7 @@ public final class Metadata {
 
 		private String createDescription() {
 			StringBuilder description = new StringBuilder();
-			description.append("an item named '" + this.name + "'");
+			description.append("an item named '").append(this.name).append("'");
 			if (this.type != null) {
 				description.append(" with dataType:").append(this.type);
 			}
@@ -132,103 +136,92 @@ public final class Metadata {
 
 		@Override
 		public boolean matches(ConfigurationMetadata value) {
-			ItemMetadata itemMetadata = getFirstItemWithName(value, this.name);
+			ItemMetadata itemMetadata = findItem(value, this.name);
 			if (itemMetadata == null) {
 				return false;
 			}
 			if (this.type != null && !this.type.equals(itemMetadata.getType())) {
 				return false;
 			}
-			if (this.sourceType != null
-					&& !this.sourceType.getName().equals(itemMetadata.getSourceType())) {
+			if (this.sourceType != null && !this.sourceType.getName().equals(itemMetadata.getSourceType())) {
 				return false;
 			}
-			if (this.sourceMethod != null
-					&& !this.sourceMethod.equals(itemMetadata.getSourceMethod())) {
+			if (this.sourceMethod != null && !this.sourceMethod.equals(itemMetadata.getSourceMethod())) {
 				return false;
 			}
-			if (this.defaultValue != null && !ObjectUtils
-					.nullSafeEquals(this.defaultValue, itemMetadata.getDefaultValue())) {
+			if (this.defaultValue != null
+					&& !ObjectUtils.nullSafeEquals(this.defaultValue, itemMetadata.getDefaultValue())) {
 				return false;
 			}
 			if (this.defaultValue == null && itemMetadata.getDefaultValue() != null) {
 				return false;
 			}
-			if (this.description != null
-					&& !this.description.equals(itemMetadata.getDescription())) {
+			if (this.description != null && !this.description.equals(itemMetadata.getDescription())) {
 				return false;
 			}
 			if (this.deprecation == null && itemMetadata.getDeprecation() != null) {
 				return false;
 			}
-			if (this.deprecation != null
-					&& !this.deprecation.equals(itemMetadata.getDeprecation())) {
-				return false;
-			}
-			return true;
+			return this.deprecation == null || this.deprecation.equals(itemMetadata.getDeprecation());
 		}
 
 		public MetadataItemCondition ofType(Class<?> dataType) {
-			return new MetadataItemCondition(this.itemType, this.name, dataType.getName(),
-					this.sourceType, this.sourceMethod, this.description,
-					this.defaultValue, this.deprecation);
+			return new MetadataItemCondition(this.itemType, this.name, dataType.getName(), this.sourceType,
+					this.sourceMethod, this.description, this.defaultValue, this.deprecation);
 		}
 
 		public MetadataItemCondition ofType(String dataType) {
-			return new MetadataItemCondition(this.itemType, this.name, dataType,
-					this.sourceType, this.sourceMethod, this.description,
-					this.defaultValue, this.deprecation);
+			return new MetadataItemCondition(this.itemType, this.name, dataType, this.sourceType, this.sourceMethod,
+					this.description, this.defaultValue, this.deprecation);
 		}
 
 		public MetadataItemCondition fromSource(Class<?> sourceType) {
-			return new MetadataItemCondition(this.itemType, this.name, this.type,
-					sourceType, this.sourceMethod, this.description, this.defaultValue,
-					this.deprecation);
+			return new MetadataItemCondition(this.itemType, this.name, this.type, sourceType, this.sourceMethod,
+					this.description, this.defaultValue, this.deprecation);
 		}
 
 		public MetadataItemCondition fromSourceMethod(String sourceMethod) {
-			return new MetadataItemCondition(this.itemType, this.name, this.type,
-					this.sourceType, sourceMethod, this.description, this.defaultValue,
-					this.deprecation);
+			return new MetadataItemCondition(this.itemType, this.name, this.type, this.sourceType, sourceMethod,
+					this.description, this.defaultValue, this.deprecation);
 		}
 
 		public MetadataItemCondition withDescription(String description) {
-			return new MetadataItemCondition(this.itemType, this.name, this.type,
-					this.sourceType, this.sourceMethod, description, this.defaultValue,
-					this.deprecation);
+			return new MetadataItemCondition(this.itemType, this.name, this.type, this.sourceType, this.sourceMethod,
+					description, this.defaultValue, this.deprecation);
 		}
 
 		public MetadataItemCondition withDefaultValue(Object defaultValue) {
-			return new MetadataItemCondition(this.itemType, this.name, this.type,
-					this.sourceType, this.sourceMethod, this.description, defaultValue,
-					this.deprecation);
+			return new MetadataItemCondition(this.itemType, this.name, this.type, this.sourceType, this.sourceMethod,
+					this.description, defaultValue, this.deprecation);
 		}
 
-		public MetadataItemCondition withDeprecation(String reason, String replacement) {
-			return withDeprecation(reason, replacement, null);
+		public MetadataItemCondition withDeprecation() {
+			return withDeprecation(null, null, null, null);
 		}
 
-		public MetadataItemCondition withDeprecation(String reason, String replacement,
-				String level) {
-			return new MetadataItemCondition(this.itemType, this.name, this.type,
-					this.sourceType, this.sourceMethod, this.description,
-					this.defaultValue, new ItemDeprecation(reason, replacement, level));
+		public MetadataItemCondition withDeprecation(String reason, String replacement, String since) {
+			return withDeprecation(reason, replacement, since, null);
+		}
+
+		public MetadataItemCondition withDeprecation(String reason, String replacement, String since, String level) {
+			return new MetadataItemCondition(this.itemType, this.name, this.type, this.sourceType, this.sourceMethod,
+					this.description, this.defaultValue, new ItemDeprecation(reason, replacement, since, level));
 		}
 
 		public MetadataItemCondition withNoDeprecation() {
-			return new MetadataItemCondition(this.itemType, this.name, this.type,
-					this.sourceType, this.sourceMethod, this.description,
-					this.defaultValue, null);
+			return new MetadataItemCondition(this.itemType, this.name, this.type, this.sourceType, this.sourceMethod,
+					this.description, this.defaultValue, null);
 		}
 
-		private ItemMetadata getFirstItemWithName(ConfigurationMetadata metadata,
-				String name) {
-			for (ItemMetadata item : metadata.getItems()) {
-				if (item.isOfItemType(this.itemType) && name.equals(item.getName())) {
-					return item;
-				}
+		private ItemMetadata findItem(ConfigurationMetadata metadata, String name) {
+			List<ItemMetadata> candidates = metadata.getItems()
+				.stream()
+				.filter((item) -> item.isOfItemType(this.itemType) && name.equals(item.getName()))
+				.toList();
+			if (candidates.size() > 1) {
+				throw new IllegalStateException("More than one metadata item with name '" + name + "': " + candidates);
 			}
-			return null;
+			return (candidates.size() == 1) ? candidates.get(0) : null;
 		}
 
 	}
@@ -247,8 +240,7 @@ public final class Metadata {
 			this.providerConditions = Collections.emptyList();
 		}
 
-		public MetadataHintCondition(String name,
-				List<ItemHintValueCondition> valueConditions,
+		public MetadataHintCondition(String name, List<ItemHintValueCondition> valueConditions,
 				List<ItemHintProviderCondition> providerConditions) {
 			this.name = name;
 			this.valueConditions = valueConditions;
@@ -258,7 +250,7 @@ public final class Metadata {
 
 		private String createDescription() {
 			StringBuilder description = new StringBuilder();
-			description.append("a hints name '" + this.name + "'");
+			description.append("a hints name '").append(this.name).append("'");
 			if (!this.valueConditions.isEmpty()) {
 				description.append(" with values:").append(this.valueConditions);
 			}
@@ -274,12 +266,10 @@ public final class Metadata {
 			if (itemHint == null) {
 				return false;
 			}
-			return matches(itemHint, this.valueConditions)
-					&& matches(itemHint, this.providerConditions);
+			return matches(itemHint, this.valueConditions) && matches(itemHint, this.providerConditions);
 		}
 
-		private boolean matches(ItemHint itemHint,
-				List<? extends Condition<ItemHint>> conditions) {
+		private boolean matches(ItemHint itemHint, List<? extends Condition<ItemHint>> conditions) {
 			for (Condition<ItemHint> condition : conditions) {
 				if (!condition.matches(itemHint)) {
 					return false;
@@ -288,8 +278,7 @@ public final class Metadata {
 			return true;
 		}
 
-		private ItemHint getFirstHintWithName(ConfigurationMetadata metadata,
-				String name) {
+		private ItemHint getFirstHintWithName(ConfigurationMetadata metadata, String name) {
 			for (ItemHint hint : metadata.getHints()) {
 				if (name.equals(hint.getName())) {
 					return hint;
@@ -298,11 +287,9 @@ public final class Metadata {
 			return null;
 		}
 
-		public MetadataHintCondition withValue(int index, Object value,
-				String description) {
+		public MetadataHintCondition withValue(int index, Object value, String description) {
 			return new MetadataHintCondition(this.name,
-					add(this.valueConditions,
-							new ItemHintValueCondition(index, value, description)),
+					add(this.valueConditions, new ItemHintValueCondition(index, value, description)),
 					this.providerConditions);
 		}
 
@@ -310,17 +297,13 @@ public final class Metadata {
 			return withProvider(this.providerConditions.size(), provider, null);
 		}
 
-		public MetadataHintCondition withProvider(String provider, String key,
-				Object value) {
-			return withProvider(this.providerConditions.size(), provider,
-					Collections.singletonMap(key, value));
+		public MetadataHintCondition withProvider(String provider, String key, Object value) {
+			return withProvider(this.providerConditions.size(), provider, Collections.singletonMap(key, value));
 		}
 
-		public MetadataHintCondition withProvider(int index, String provider,
-				Map<String, Object> parameters) {
+		public MetadataHintCondition withProvider(int index, String provider, Map<String, Object> parameters) {
 			return new MetadataHintCondition(this.name, this.valueConditions,
-					add(this.providerConditions,
-							new ItemHintProviderCondition(index, provider, parameters)));
+					add(this.providerConditions, new ItemHintProviderCondition(index, provider, parameters)));
 		}
 
 		private <T> List<T> add(List<T> items, T item) {
@@ -331,7 +314,7 @@ public final class Metadata {
 
 	}
 
-	private static class ItemHintValueCondition extends Condition<ItemHint> {
+	static class ItemHintValueCondition extends Condition<ItemHint> {
 
 		private final int index;
 
@@ -348,7 +331,7 @@ public final class Metadata {
 
 		private String createDescription() {
 			StringBuilder description = new StringBuilder();
-			description.append("value hint at index '" + this.index + "'");
+			description.append("value hint at index '").append(this.index).append("'");
 			if (this.value != null) {
 				description.append(" with value:").append(this.value);
 			}
@@ -367,16 +350,12 @@ public final class Metadata {
 			if (this.value != null && !this.value.equals(valueHint.getValue())) {
 				return false;
 			}
-			if (this.description != null
-					&& !this.description.equals(valueHint.getDescription())) {
-				return false;
-			}
-			return true;
+			return this.description == null || this.description.equals(valueHint.getDescription());
 		}
 
 	}
 
-	private static class ItemHintProviderCondition extends Condition<ItemHint> {
+	static class ItemHintProviderCondition extends Condition<ItemHint> {
 
 		private final int index;
 
@@ -384,15 +363,14 @@ public final class Metadata {
 
 		private final Map<String, Object> parameters;
 
-		ItemHintProviderCondition(int index, String name,
-				Map<String, Object> parameters) {
+		ItemHintProviderCondition(int index, String name, Map<String, Object> parameters) {
 			this.index = index;
 			this.name = name;
 			this.parameters = parameters;
 			describedAs(createDescription());
 		}
 
-		public String createDescription() {
+		String createDescription() {
 			StringBuilder description = new StringBuilder();
 			description.append("value provider");
 			if (this.name != null) {
@@ -416,7 +394,7 @@ public final class Metadata {
 			if (this.parameters != null) {
 				for (Map.Entry<String, Object> entry : this.parameters.entrySet()) {
 					if (!IsMapContaining.hasEntry(entry.getKey(), entry.getValue())
-							.matches(valueProvider.getParameters())) {
+						.matches(valueProvider.getParameters())) {
 						return false;
 					}
 				}

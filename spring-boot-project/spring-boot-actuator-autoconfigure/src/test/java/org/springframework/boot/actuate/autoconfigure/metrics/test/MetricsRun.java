@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,8 +23,6 @@ import java.util.function.Function;
 
 import org.springframework.boot.actuate.autoconfigure.metrics.CompositeMeterRegistryAutoConfiguration;
 import org.springframework.boot.actuate.autoconfigure.metrics.MetricsAutoConfiguration;
-import org.springframework.boot.actuate.autoconfigure.metrics.amqp.RabbitMetricsAutoConfiguration;
-import org.springframework.boot.actuate.autoconfigure.metrics.cache.CacheMetricsAutoConfiguration;
 import org.springframework.boot.actuate.autoconfigure.metrics.export.atlas.AtlasMetricsExportAutoConfiguration;
 import org.springframework.boot.actuate.autoconfigure.metrics.export.datadog.DatadogMetricsExportAutoConfiguration;
 import org.springframework.boot.actuate.autoconfigure.metrics.export.ganglia.GangliaMetricsExportAutoConfiguration;
@@ -32,15 +30,12 @@ import org.springframework.boot.actuate.autoconfigure.metrics.export.graphite.Gr
 import org.springframework.boot.actuate.autoconfigure.metrics.export.influx.InfluxMetricsExportAutoConfiguration;
 import org.springframework.boot.actuate.autoconfigure.metrics.export.jmx.JmxMetricsExportAutoConfiguration;
 import org.springframework.boot.actuate.autoconfigure.metrics.export.newrelic.NewRelicMetricsExportAutoConfiguration;
+import org.springframework.boot.actuate.autoconfigure.metrics.export.otlp.OtlpMetricsExportAutoConfiguration;
 import org.springframework.boot.actuate.autoconfigure.metrics.export.prometheus.PrometheusMetricsExportAutoConfiguration;
-import org.springframework.boot.actuate.autoconfigure.metrics.export.signalfx.SignalFxMetricsExportAutoConfiguration;
 import org.springframework.boot.actuate.autoconfigure.metrics.export.simple.SimpleMetricsExportAutoConfiguration;
 import org.springframework.boot.actuate.autoconfigure.metrics.export.statsd.StatsdMetricsExportAutoConfiguration;
-import org.springframework.boot.actuate.autoconfigure.metrics.jdbc.DataSourcePoolMetricsAutoConfiguration;
-import org.springframework.boot.actuate.autoconfigure.metrics.web.client.RestTemplateMetricsAutoConfiguration;
-import org.springframework.boot.actuate.autoconfigure.metrics.web.reactive.WebFluxMetricsAutoConfiguration;
-import org.springframework.boot.actuate.autoconfigure.metrics.web.servlet.WebMvcMetricsAutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.test.context.runner.AbstractApplicationContextRunner;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.util.Assert;
 
@@ -51,6 +46,7 @@ import org.springframework.util.Assert;
  * @author Jon Schneider
  * @author Phillip Webb
  */
+@SuppressWarnings("removal")
 public final class MetricsRun {
 
 	private static final Set<Class<?>> EXPORT_AUTO_CONFIGURATIONS;
@@ -64,19 +60,17 @@ public final class MetricsRun {
 		implementations.add(InfluxMetricsExportAutoConfiguration.class);
 		implementations.add(JmxMetricsExportAutoConfiguration.class);
 		implementations.add(NewRelicMetricsExportAutoConfiguration.class);
+		implementations.add(OtlpMetricsExportAutoConfiguration.class);
 		implementations.add(PrometheusMetricsExportAutoConfiguration.class);
 		implementations.add(SimpleMetricsExportAutoConfiguration.class);
-		implementations.add(SignalFxMetricsExportAutoConfiguration.class);
+		implementations.add(
+				org.springframework.boot.actuate.autoconfigure.metrics.export.signalfx.SignalFxMetricsExportAutoConfiguration.class);
 		implementations.add(StatsdMetricsExportAutoConfiguration.class);
 		EXPORT_AUTO_CONFIGURATIONS = Collections.unmodifiableSet(implementations);
 	}
 
-	private static final AutoConfigurations AUTO_CONFIGURATIONS = AutoConfigurations.of(
-			MetricsAutoConfiguration.class, CompositeMeterRegistryAutoConfiguration.class,
-			RabbitMetricsAutoConfiguration.class, CacheMetricsAutoConfiguration.class,
-			DataSourcePoolMetricsAutoConfiguration.class,
-			RestTemplateMetricsAutoConfiguration.class,
-			WebFluxMetricsAutoConfiguration.class, WebMvcMetricsAutoConfiguration.class);
+	private static final AutoConfigurations AUTO_CONFIGURATIONS = AutoConfigurations.of(MetricsAutoConfiguration.class,
+			CompositeMeterRegistryAutoConfiguration.class);
 
 	private MetricsRun() {
 	}
@@ -86,7 +80,7 @@ public final class MetricsRun {
 	 * implementation.
 	 * @return the function to apply
 	 */
-	public static Function<ApplicationContextRunner, ApplicationContextRunner> simple() {
+	public static <T extends AbstractApplicationContextRunner<?, ?, ?>> Function<T, T> simple() {
 		return limitedTo(SimpleMetricsExportAutoConfiguration.class);
 	}
 
@@ -96,21 +90,21 @@ public final class MetricsRun {
 	 * @param exportAutoConfigurations the export auto-configurations to include
 	 * @return the function to apply
 	 */
-	public static Function<ApplicationContextRunner, ApplicationContextRunner> limitedTo(
+	public static <T extends AbstractApplicationContextRunner<?, ?, ?>> Function<T, T> limitedTo(
 			Class<?>... exportAutoConfigurations) {
 		return (contextRunner) -> apply(contextRunner, exportAutoConfigurations);
 	}
 
-	private static ApplicationContextRunner apply(ApplicationContextRunner contextRunner,
+	@SuppressWarnings("unchecked")
+	private static <T extends AbstractApplicationContextRunner<?, ?, ?>> T apply(T contextRunner,
 			Class<?>[] exportAutoConfigurations) {
 		for (Class<?> configuration : exportAutoConfigurations) {
 			Assert.state(EXPORT_AUTO_CONFIGURATIONS.contains(configuration),
-					"Unknown export auto-configuration " + configuration.getName());
+					() -> "Unknown export auto-configuration " + configuration.getName());
 		}
-		return contextRunner
-				.withPropertyValues("management.metrics.use-global-registry=false")
-				.withConfiguration(AUTO_CONFIGURATIONS)
-				.withConfiguration(AutoConfigurations.of(exportAutoConfigurations));
+		return (T) contextRunner.withPropertyValues("management.metrics.use-global-registry=false")
+			.withConfiguration(AUTO_CONFIGURATIONS)
+			.withConfiguration(AutoConfigurations.of(exportAutoConfigurations));
 	}
 
 }

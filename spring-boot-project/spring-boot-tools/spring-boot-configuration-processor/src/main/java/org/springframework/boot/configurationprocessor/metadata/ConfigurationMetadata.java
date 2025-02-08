@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,44 +17,41 @@
 package org.springframework.boot.configurationprocessor.metadata;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
+
+import org.springframework.boot.configurationprocessor.metadata.ItemMetadata.ItemType;
+import org.springframework.boot.configurationprocessor.support.ConventionUtils;
 
 /**
  * Configuration meta-data.
  *
  * @author Stephane Nicoll
  * @author Phillip Webb
+ * @author Moritz Halbritter
  * @since 1.2.0
  * @see ItemMetadata
  */
 public class ConfigurationMetadata {
 
-	private static final Set<Character> SEPARATORS;
-
-	static {
-		List<Character> chars = Arrays.asList('-', '_');
-		SEPARATORS = Collections.unmodifiableSet(new HashSet<>(chars));
-	}
-
 	private final Map<String, List<ItemMetadata>> items;
 
 	private final Map<String, List<ItemHint>> hints;
 
+	private final Map<String, List<ItemIgnore>> ignored;
+
 	public ConfigurationMetadata() {
 		this.items = new LinkedHashMap<>();
 		this.hints = new LinkedHashMap<>();
+		this.ignored = new LinkedHashMap<>();
 	}
 
 	public ConfigurationMetadata(ConfigurationMetadata metadata) {
 		this.items = new LinkedHashMap<>(metadata.items);
 		this.hints = new LinkedHashMap<>(metadata.hints);
+		this.ignored = new LinkedHashMap<>(metadata.ignored);
 	}
 
 	/**
@@ -62,7 +59,16 @@ public class ConfigurationMetadata {
 	 * @param itemMetadata the meta-data to add
 	 */
 	public void add(ItemMetadata itemMetadata) {
-		add(this.items, itemMetadata.getName(), itemMetadata);
+		add(this.items, itemMetadata.getName(), itemMetadata, false);
+	}
+
+	/**
+	 * Add item meta-data if it's not already present.
+	 * @param itemMetadata the meta-data to add
+	 * @since 2.4.0
+	 */
+	public void addIfMissing(ItemMetadata itemMetadata) {
+		add(this.items, itemMetadata.getName(), itemMetadata, true);
 	}
 
 	/**
@@ -70,7 +76,33 @@ public class ConfigurationMetadata {
 	 * @param itemHint the item hint to add
 	 */
 	public void add(ItemHint itemHint) {
-		add(this.hints, itemHint.getName(), itemHint);
+		add(this.hints, itemHint.getName(), itemHint, false);
+	}
+
+	/**
+	 * Add item ignore.
+	 * @param itemIgnore the item ignore to add
+	 * @since 3.5.0
+	 */
+	public void add(ItemIgnore itemIgnore) {
+		add(this.ignored, itemIgnore.getName(), itemIgnore, false);
+	}
+
+	/**
+	 * Remove item meta-data for the given item type and name.
+	 * @param itemType the item type
+	 * @param name the name
+	 * @since 3.5.0
+	 */
+	public void removeMetadata(ItemType itemType, String name) {
+		List<ItemMetadata> metadata = this.items.get(name);
+		if (metadata == null) {
+			return;
+		}
+		metadata.removeIf((item) -> item.isOfItemType(itemType));
+		if (metadata.isEmpty()) {
+			this.items.remove(name);
+		}
 	}
 
 	/**
@@ -83,6 +115,9 @@ public class ConfigurationMetadata {
 		}
 		for (ItemHint itemHint : metadata.getHints()) {
 			add(itemHint);
+		}
+		for (ItemIgnore itemIgnore : metadata.getIgnored()) {
+			add(itemIgnore);
 		}
 	}
 
@@ -100,6 +135,14 @@ public class ConfigurationMetadata {
 	 */
 	public List<ItemHint> getHints() {
 		return flattenValues(this.hints);
+	}
+
+	/**
+	 * Return ignore meta-data.
+	 * @return the ignores
+	 */
+	public List<ItemIgnore> getIgnored() {
+		return flattenValues(this.ignored);
 	}
 
 	protected void mergeItemMetadata(ItemMetadata metadata) {
@@ -127,21 +170,22 @@ public class ConfigurationMetadata {
 					if (deprecation.getLevel() != null) {
 						matchingDeprecation.setLevel(deprecation.getLevel());
 					}
+					if (deprecation.getSince() != null) {
+						matchingDeprecation.setSince(deprecation.getSince());
+					}
 				}
 			}
 		}
 		else {
-			add(this.items, metadata.getName(), metadata);
+			add(this.items, metadata.getName(), metadata, false);
 		}
 	}
 
-	private <K, V> void add(Map<K, List<V>> map, K key, V value) {
-		List<V> values = map.get(key);
-		if (values == null) {
-			values = new ArrayList<>();
-			map.put(key, values);
+	private <K, V> void add(Map<K, List<V>> map, K key, V value, boolean ifMissing) {
+		List<V> values = map.computeIfAbsent(key, (k) -> new ArrayList<>());
+		if (!ifMissing || values.isEmpty()) {
+			values.add(value);
 		}
-		values.add(value);
 	}
 
 	private ItemMetadata findMatchingItemMetadata(ItemMetadata metadata) {
@@ -149,7 +193,11 @@ public class ConfigurationMetadata {
 		if (candidates == null || candidates.isEmpty()) {
 			return null;
 		}
+		candidates = new ArrayList<>(candidates);
 		candidates.removeIf((itemMetadata) -> !itemMetadata.hasSameType(metadata));
+		if (candidates.size() > 1 && metadata.getType() != null) {
+			candidates.removeIf((itemMetadata) -> !metadata.getType().equals(itemMetadata.getType()));
+		}
 		if (candidates.size() == 1) {
 			return candidates.get(0);
 		}
@@ -165,34 +213,14 @@ public class ConfigurationMetadata {
 		if (o1 == o2) {
 			return true;
 		}
-		return o1 != null && o2 != null && o1.equals(o2);
+		return o1 != null && o1.equals(o2);
 	}
 
 	public static String nestedPrefix(String prefix, String name) {
-		String nestedPrefix = (prefix == null ? "" : prefix);
-		String dashedName = toDashedCase(name);
-		nestedPrefix += ("".equals(nestedPrefix) ? dashedName : "." + dashedName);
+		String nestedPrefix = (prefix != null) ? prefix : "";
+		String dashedName = ConventionUtils.toDashedCase(name);
+		nestedPrefix += nestedPrefix.isEmpty() ? dashedName : "." + dashedName;
 		return nestedPrefix;
-	}
-
-	static String toDashedCase(String name) {
-		StringBuilder dashed = new StringBuilder();
-		Character previous = null;
-		for (char current : name.toCharArray()) {
-			if (SEPARATORS.contains(current)) {
-				dashed.append("-");
-			}
-			else if (Character.isUpperCase(current) && previous != null
-					&& !SEPARATORS.contains(previous)) {
-				dashed.append("-").append(current);
-			}
-			else {
-				dashed.append(current);
-			}
-			previous = current;
-
-		}
-		return dashed.toString().toLowerCase(Locale.ENGLISH);
 	}
 
 	private static <T extends Comparable<T>> List<T> flattenValues(Map<?, List<T>> map) {
@@ -208,8 +236,7 @@ public class ConfigurationMetadata {
 	public String toString() {
 		StringBuilder result = new StringBuilder();
 		result.append(String.format("items: %n"));
-		this.items.values().forEach((itemMetadata) -> result.append("\t")
-				.append(String.format("%s%n", itemMetadata)));
+		this.items.values().forEach((itemMetadata) -> result.append("\t").append(String.format("%s%n", itemMetadata)));
 		return result.toString();
 	}
 

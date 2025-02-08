@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,14 +20,11 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Captor;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 import org.springframework.boot.devtools.restart.classloader.ClassLoaderFile;
 import org.springframework.boot.devtools.restart.classloader.ClassLoaderFile.Kind;
@@ -38,81 +35,72 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyZeroInteractions;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.mockito.ArgumentMatchers.assertArg;
+import static org.mockito.BDDMockito.then;
 
 /**
  * Tests for {@link HttpRestartServer}.
  *
  * @author Phillip Webb
  */
-public class HttpRestartServerTests {
-
-	@Rule
-	public ExpectedException thrown = ExpectedException.none();
+@ExtendWith(MockitoExtension.class)
+class HttpRestartServerTests {
 
 	@Mock
 	private RestartServer delegate;
 
 	private HttpRestartServer server;
 
-	@Captor
-	private ArgumentCaptor<ClassLoaderFiles> filesCaptor;
-
-	@Before
-	public void setup() {
-		MockitoAnnotations.initMocks(this);
+	@BeforeEach
+	void setup() {
 		this.server = new HttpRestartServer(this.delegate);
 	}
 
 	@Test
-	public void sourceFolderUrlFilterMustNotBeNull() {
-		this.thrown.expect(IllegalArgumentException.class);
-		this.thrown.expectMessage("SourceFolderUrlFilter must not be null");
-		new HttpRestartServer((SourceFolderUrlFilter) null);
+	void sourceDirectoryUrlFilterMustNotBeNull() {
+		assertThatIllegalArgumentException().isThrownBy(() -> new HttpRestartServer((SourceDirectoryUrlFilter) null))
+			.withMessageContaining("'sourceDirectoryUrlFilter' must not be null");
 	}
 
 	@Test
-	public void restartServerMustNotBeNull() {
-		this.thrown.expect(IllegalArgumentException.class);
-		this.thrown.expectMessage("RestartServer must not be null");
-		new HttpRestartServer((RestartServer) null);
+	void restartServerMustNotBeNull() {
+		assertThatIllegalArgumentException().isThrownBy(() -> new HttpRestartServer((RestartServer) null))
+			.withMessageContaining("'restartServer' must not be null");
 	}
 
 	@Test
-	public void sendClassLoaderFiles() throws Exception {
+	void sendClassLoaderFiles() throws Exception {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		MockHttpServletResponse response = new MockHttpServletResponse();
 		ClassLoaderFiles files = new ClassLoaderFiles();
 		files.addFile("name", new ClassLoaderFile(Kind.ADDED, new byte[0]));
 		byte[] bytes = serialize(files);
 		request.setContent(bytes);
-		this.server.handle(new ServletServerHttpRequest(request),
-				new ServletServerHttpResponse(response));
-		verify(this.delegate).updateAndRestart(this.filesCaptor.capture());
-		assertThat(this.filesCaptor.getValue().getFile("name")).isNotNull();
+		this.server.handle(new ServletServerHttpRequest(request), new ServletServerHttpResponse(response));
+		then(this.delegate).should()
+			.updateAndRestart(
+					assertArg((classLoaderFiles) -> assertThat(classLoaderFiles.getFile("name")).isNotNull()));
 		assertThat(response.getStatus()).isEqualTo(200);
 	}
 
 	@Test
-	public void sendNoContent() throws Exception {
+	void sendNoContent() throws Exception {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		MockHttpServletResponse response = new MockHttpServletResponse();
-		this.server.handle(new ServletServerHttpRequest(request),
-				new ServletServerHttpResponse(response));
-		verifyZeroInteractions(this.delegate);
+		this.server.handle(new ServletServerHttpRequest(request), new ServletServerHttpResponse(response));
+		then(this.delegate).shouldHaveNoInteractions();
 		assertThat(response.getStatus()).isEqualTo(500);
 
 	}
 
 	@Test
-	public void sendBadData() throws Exception {
+	void sendBadData() throws Exception {
 		MockHttpServletRequest request = new MockHttpServletRequest();
 		MockHttpServletResponse response = new MockHttpServletResponse();
 		request.setContent(new byte[] { 0, 0, 0 });
-		this.server.handle(new ServletServerHttpRequest(request),
-				new ServletServerHttpResponse(response));
-		verifyZeroInteractions(this.delegate);
+		this.server.handle(new ServletServerHttpRequest(request), new ServletServerHttpResponse(response));
+		then(this.delegate).shouldHaveNoInteractions();
 		assertThat(response.getStatus()).isEqualTo(500);
 	}
 

@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,16 +23,19 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.activemq.artemis.core.remoting.impl.invm.TransportConstants;
 
+import org.springframework.boot.autoconfigure.jms.JmsPoolConnectionFactoryProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.NestedConfigurationProperty;
 
 /**
  * Configuration properties for Artemis.
  *
  * @author Eddú Meléndez
  * @author Stephane Nicoll
+ * @author Justin Bertram
  * @since 1.3.0
  */
-@ConfigurationProperties(prefix = "spring.artemis")
+@ConfigurationProperties("spring.artemis")
 public class ArtemisProperties {
 
 	/**
@@ -41,14 +44,9 @@ public class ArtemisProperties {
 	private ArtemisMode mode;
 
 	/**
-	 * Artemis broker host.
+	 * Artemis broker url.
 	 */
-	private String host = "localhost";
-
-	/**
-	 * Artemis broker port.
-	 */
-	private int port = 61616;
+	private String brokerUrl;
 
 	/**
 	 * Login user of the broker.
@@ -62,6 +60,9 @@ public class ArtemisProperties {
 
 	private final Embedded embedded = new Embedded();
 
+	@NestedConfigurationProperty
+	private final JmsPoolConnectionFactoryProperties pool = new JmsPoolConnectionFactoryProperties();
+
 	public ArtemisMode getMode() {
 		return this.mode;
 	}
@@ -70,20 +71,12 @@ public class ArtemisProperties {
 		this.mode = mode;
 	}
 
-	public String getHost() {
-		return this.host;
+	public String getBrokerUrl() {
+		return this.brokerUrl;
 	}
 
-	public void setHost(String host) {
-		this.host = host;
-	}
-
-	public int getPort() {
-		return this.port;
-	}
-
-	public void setPort(int port) {
-		this.port = port;
+	public void setBrokerUrl(String brokerUrl) {
+		this.brokerUrl = brokerUrl;
 	}
 
 	public String getUser() {
@@ -104,6 +97,10 @@ public class ArtemisProperties {
 
 	public Embedded getEmbedded() {
 		return this.embedded;
+	}
+
+	public JmsPoolConnectionFactoryProperties getPool() {
+		return this.pool;
 	}
 
 	/**
@@ -134,12 +131,12 @@ public class ArtemisProperties {
 		private String dataDirectory;
 
 		/**
-		 * Comma-separated list of queues to create on startup.
+		 * List of queues to create on startup.
 		 */
 		private String[] queues = new String[0];
 
 		/**
-		 * Comma-separated list of topics to create on startup.
+		 * List of topics to create on startup.
 		 */
 		private String[] topics = new String[0];
 

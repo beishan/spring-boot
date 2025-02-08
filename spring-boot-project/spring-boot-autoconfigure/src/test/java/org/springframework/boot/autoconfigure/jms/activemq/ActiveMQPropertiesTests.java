@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,21 +16,20 @@
 
 package org.springframework.boot.autoconfigure.jms.activemq;
 
-import java.util.Collections;
-
 import org.apache.activemq.ActiveMQConnectionFactory;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests for {@link ActiveMQProperties} and {@link ActiveMQConnectionFactoryFactory}.
+ * Tests for {@link ActiveMQProperties} and {@link ActiveMQConnectionFactoryConfigurer}.
  *
  * @author Stephane Nicoll
  * @author Aurélien Leboulanger
  * @author Venil Noronha
+ * @author Eddú Meléndez
  */
-public class ActiveMQPropertiesTests {
+class ActiveMQPropertiesTests {
 
 	private static final String DEFAULT_EMBEDDED_BROKER_URL = "vm://localhost?broker.persistent=false";
 
@@ -39,55 +38,46 @@ public class ActiveMQPropertiesTests {
 	private final ActiveMQProperties properties = new ActiveMQProperties();
 
 	@Test
-	public void getBrokerUrlIsInMemoryByDefault() {
-		assertThat(createFactory(this.properties).determineBrokerUrl())
-				.isEqualTo(DEFAULT_EMBEDDED_BROKER_URL);
+	void getBrokerUrlIsEmbeddedByDefault() {
+		assertThat(this.properties.determineBrokerUrl()).isEqualTo(DEFAULT_EMBEDDED_BROKER_URL);
 	}
 
 	@Test
-	public void getBrokerUrlUseExplicitBrokerUrl() {
-		this.properties.setBrokerUrl("vm://foo-bar");
-		assertThat(createFactory(this.properties).determineBrokerUrl())
-				.isEqualTo("vm://foo-bar");
+	void getBrokerUrlUseExplicitBrokerUrl() {
+		this.properties.setBrokerUrl("tcp://activemq.example.com:71717");
+		assertThat(this.properties.determineBrokerUrl()).isEqualTo("tcp://activemq.example.com:71717");
 	}
 
 	@Test
-	public void getBrokerUrlWithInMemorySetToFalse() {
-		this.properties.setInMemory(false);
-		assertThat(createFactory(this.properties).determineBrokerUrl())
-				.isEqualTo(DEFAULT_NETWORK_BROKER_URL);
+	void getBrokerUrlWithEmbeddedSetToFalse() {
+		this.properties.getEmbedded().setEnabled(false);
+		assertThat(this.properties.determineBrokerUrl()).isEqualTo(DEFAULT_NETWORK_BROKER_URL);
 	}
 
 	@Test
-	public void getExplicitBrokerUrlAlwaysWins() {
-		this.properties.setBrokerUrl("vm://foo-bar");
-		this.properties.setInMemory(false);
-		assertThat(createFactory(this.properties).determineBrokerUrl())
-				.isEqualTo("vm://foo-bar");
+	void getExplicitBrokerUrlAlwaysWins() {
+		this.properties.setBrokerUrl("tcp://activemq.example.com:71717");
+		this.properties.getEmbedded().setEnabled(false);
+		assertThat(this.properties.determineBrokerUrl()).isEqualTo("tcp://activemq.example.com:71717");
 	}
 
 	@Test
-	public void setTrustAllPackages() {
+	void setTrustAllPackages() {
+		ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory();
 		this.properties.getPackages().setTrustAll(true);
-		assertThat(createFactory(this.properties)
-				.createConnectionFactory(ActiveMQConnectionFactory.class)
-				.isTrustAllPackages()).isTrue();
+		new ActiveMQConnectionFactoryConfigurer(this.properties, null).configure(factory);
+		assertThat(factory.isTrustAllPackages()).isTrue();
 	}
 
 	@Test
-	public void setTrustedPackages() {
+	void setTrustedPackages() {
+		ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory();
 		this.properties.getPackages().setTrustAll(false);
 		this.properties.getPackages().getTrusted().add("trusted.package");
-		ActiveMQConnectionFactory factory = createFactory(this.properties)
-				.createConnectionFactory(ActiveMQConnectionFactory.class);
+		new ActiveMQConnectionFactoryConfigurer(this.properties, null).configure(factory);
 		assertThat(factory.isTrustAllPackages()).isFalse();
-		assertThat(factory.getTrustedPackages().size()).isEqualTo(1);
+		assertThat(factory.getTrustedPackages()).hasSize(1);
 		assertThat(factory.getTrustedPackages().get(0)).isEqualTo("trusted.package");
-	}
-
-	private ActiveMQConnectionFactoryFactory createFactory(
-			ActiveMQProperties properties) {
-		return new ActiveMQConnectionFactoryFactory(properties, Collections.emptyList());
 	}
 
 }

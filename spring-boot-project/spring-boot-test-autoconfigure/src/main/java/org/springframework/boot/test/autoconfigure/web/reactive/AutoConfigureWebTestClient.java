@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -26,14 +26,18 @@ import java.time.Duration;
 
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.properties.PropertyMapping;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 /**
- * Annotation that can be applied to a test class to enable a {@link WebTestClient}.
+ * Annotation that can be applied to a test class to enable a {@link WebTestClient} that
+ * is bound directly to the application. Tests do not rely upon an HTTP server and use
+ * mock requests and responses. At the moment, only WebFlux applications are supported.
  *
  * @author Stephane Nicoll
  * @since 2.0.0
  * @see WebTestClientAutoConfiguration
+ * @see WebTestClient#bindToApplicationContext(ApplicationContext)
  */
 @Target({ ElementType.TYPE, ElementType.METHOD })
 @Retention(RetentionPolicy.RUNTIME)

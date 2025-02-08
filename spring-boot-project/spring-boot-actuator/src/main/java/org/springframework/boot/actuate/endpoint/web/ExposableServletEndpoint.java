@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -24,12 +24,14 @@ import org.springframework.boot.actuate.endpoint.Operation;
  *
  * @author Phillip Webb
  * @since 2.0.0
+ * @deprecated since 3.3.0 in favor of {@code @Endpoint} and {@code @WebEndpoint}
  */
-public interface ExposableServletEndpoint
-		extends ExposableEndpoint<Operation>, PathMappedEndpoint {
+@Deprecated(since = "3.3.0", forRemoval = true)
+@SuppressWarnings("removal")
+public interface ExposableServletEndpoint extends ExposableEndpoint<Operation>, PathMappedEndpoint {
 
 	/**
-	 * Return details of the servlet that should registered.
+	 * Return details of the servlet that should be registered.
 	 * @return the endpoint servlet
 	 */
 	EndpointServlet getEndpointServlet();

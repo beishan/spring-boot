@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,11 +23,9 @@ import java.net.URLConnection;
 import java.net.URLStreamHandler;
 import java.net.URLStreamHandlerFactory;
 
-import javax.servlet.ServletContainerInitializer;
-
-import org.apache.catalina.webresources.TomcatURLStreamHandlerFactory;
+import jakarta.servlet.ServletContainerInitializer;
+import org.eclipse.jetty.ee10.webapp.WebAppContext;
 import org.eclipse.jetty.util.component.AbstractLifeCycle;
-import org.eclipse.jetty.webapp.WebAppContext;
 
 import org.springframework.util.ClassUtils;
 
@@ -39,8 +37,7 @@ import org.springframework.util.ClassUtils;
  */
 class JasperInitializer extends AbstractLifeCycle {
 
-	private static final String[] INITIALIZER_CLASSES = {
-			"org.eclipse.jetty.apache.jsp.JettyJasperInitializer",
+	private static final String[] INITIALIZER_CLASSES = { "org.eclipse.jetty.apache.jsp.JettyJasperInitializer",
 			"org.apache.jasper.servlet.JasperInitializer" };
 
 	private final WebAppContext context;
@@ -56,7 +53,7 @@ class JasperInitializer extends AbstractLifeCycle {
 		for (String className : INITIALIZER_CLASSES) {
 			try {
 				Class<?> initializerClass = ClassUtils.forName(className, null);
-				return (ServletContainerInitializer) initializerClass.newInstance();
+				return (ServletContainerInitializer) initializerClass.getDeclaredConstructor().newInstance();
 			}
 			catch (Exception ex) {
 				// Ignore
@@ -70,10 +67,9 @@ class JasperInitializer extends AbstractLifeCycle {
 		if (this.initializer == null) {
 			return;
 		}
-		if (ClassUtils.isPresent(
-				"org.apache.catalina.webresources.TomcatURLStreamHandlerFactory",
+		if (ClassUtils.isPresent("org.apache.catalina.webresources.TomcatURLStreamHandlerFactory",
 				getClass().getClassLoader())) {
-			TomcatURLStreamHandlerFactory.register();
+			org.apache.catalina.webresources.TomcatURLStreamHandlerFactory.register();
 		}
 		else {
 			try {
@@ -87,11 +83,11 @@ class JasperInitializer extends AbstractLifeCycle {
 		try {
 			Thread.currentThread().setContextClassLoader(this.context.getClassLoader());
 			try {
-				setExtendedListenerTypes(true);
+				this.context.getContext().setExtendedListenerTypes(true);
 				this.initializer.onStartup(null, this.context.getServletContext());
 			}
 			finally {
-				setExtendedListenerTypes(false);
+				this.context.getContext().setExtendedListenerTypes(false);
 			}
 		}
 		finally {
@@ -99,19 +95,10 @@ class JasperInitializer extends AbstractLifeCycle {
 		}
 	}
 
-	private void setExtendedListenerTypes(boolean extended) {
-		try {
-			this.context.getServletContext().setExtendedListenerTypes(extended);
-		}
-		catch (NoSuchMethodError ex) {
-			// Not available on Jetty 8
-		}
-	}
-
 	/**
 	 * {@link URLStreamHandlerFactory} to support {@literal war} protocol.
 	 */
-	private static class WarUrlStreamHandlerFactory implements URLStreamHandlerFactory {
+	private static final class WarUrlStreamHandlerFactory implements URLStreamHandlerFactory {
 
 		@Override
 		public URLStreamHandler createURLStreamHandler(String protocol) {
@@ -128,15 +115,14 @@ class JasperInitializer extends AbstractLifeCycle {
 	 * {@link URL urls} produced by
 	 * {@link org.apache.tomcat.util.scan.JarFactory#getJarEntryURL(URL, String)}.
 	 */
-	private static class WarUrlStreamHandler extends URLStreamHandler {
+	private static final class WarUrlStreamHandler extends URLStreamHandler {
 
 		@Override
 		protected void parseURL(URL u, String spec, int start, int limit) {
 			String path = "jar:" + spec.substring("war:".length());
 			int separator = path.indexOf("*/");
 			if (separator >= 0) {
-				path = path.substring(0, separator) + "!/"
-						+ path.substring(separator + 2);
+				path = path.substring(0, separator) + "!/" + path.substring(separator + 2);
 			}
 			setURL(u, u.getProtocol(), "", -1, null, null, path, null, null);
 		}

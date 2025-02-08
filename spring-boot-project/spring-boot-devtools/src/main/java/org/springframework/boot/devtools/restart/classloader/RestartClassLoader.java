@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,12 +20,8 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.security.AccessController;
-import java.security.PrivilegedAction;
+import java.security.ProtectionDomain;
 import java.util.Enumeration;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 
 import org.springframework.boot.devtools.restart.classloader.ClassLoaderFile.Kind;
 import org.springframework.core.SmartClassLoader;
@@ -40,8 +36,6 @@ import org.springframework.util.Assert;
  * @since 1.3.0
  */
 public class RestartClassLoader extends URLClassLoader implements SmartClassLoader {
-
-	private final Log logger;
 
 	private final ClassLoaderFileRepository updatedFiles;
 
@@ -61,30 +55,11 @@ public class RestartClassLoader extends URLClassLoader implements SmartClassLoad
 	 * URLs were created.
 	 * @param urls the urls managed by the classloader
 	 */
-	public RestartClassLoader(ClassLoader parent, URL[] urls,
-			ClassLoaderFileRepository updatedFiles) {
-		this(parent, urls, updatedFiles, LogFactory.getLog(RestartClassLoader.class));
-	}
-
-	/**
-	 * Create a new {@link RestartClassLoader} instance.
-	 * @param parent the parent classloader
-	 * @param updatedFiles any files that have been updated since the JARs referenced in
-	 * URLs were created.
-	 * @param urls the urls managed by the classloader
-	 * @param logger the logger used for messages
-	 */
-	public RestartClassLoader(ClassLoader parent, URL[] urls,
-			ClassLoaderFileRepository updatedFiles, Log logger) {
+	public RestartClassLoader(ClassLoader parent, URL[] urls, ClassLoaderFileRepository updatedFiles) {
 		super(urls, parent);
-		Assert.notNull(parent, "Parent must not be null");
-		Assert.notNull(updatedFiles, "UpdatedFiles must not be null");
-		Assert.notNull(logger, "Logger must not be null");
+		Assert.notNull(parent, "'parent' must not be null");
+		Assert.notNull(updatedFiles, "'updatedFiles' must not be null");
 		this.updatedFiles = updatedFiles;
-		this.logger = logger;
-		if (logger.isDebugEnabled()) {
-			logger.debug("Created RestartClassLoader " + toString());
-		}
 	}
 
 	@Override
@@ -126,13 +101,11 @@ public class RestartClassLoader extends URLClassLoader implements SmartClassLoad
 		if (file.getKind() == Kind.DELETED) {
 			return null;
 		}
-		return AccessController
-				.doPrivileged((PrivilegedAction<URL>) () -> createFileUrl(name, file));
+		return createFileUrl(name, file);
 	}
 
 	@Override
-	public Class<?> loadClass(String name, boolean resolve)
-			throws ClassNotFoundException {
+	public Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
 		String path = name.replace('.', '/').concat(".class");
 		ClassLoaderFile file = this.updatedFiles.getFile(path);
 		if (file != null && file.getKind() == Kind.DELETED) {
@@ -145,7 +118,7 @@ public class RestartClassLoader extends URLClassLoader implements SmartClassLoad
 					loadedClass = findClass(name);
 				}
 				catch (ClassNotFoundException ex) {
-					loadedClass = getParent().loadClass(name);
+					loadedClass = Class.forName(name, false, getParent());
 				}
 			}
 			if (resolve) {
@@ -165,28 +138,27 @@ public class RestartClassLoader extends URLClassLoader implements SmartClassLoad
 		if (file.getKind() == Kind.DELETED) {
 			throw new ClassNotFoundException(name);
 		}
-		return AccessController.doPrivileged((PrivilegedAction<Class<?>>) () -> {
-			byte[] bytes = file.getContents();
-			return defineClass(name, bytes, 0, bytes.length);
-		});
+		byte[] bytes = file.getContents();
+		return defineClass(name, bytes, 0, bytes.length);
+	}
+
+	@Override
+	public Class<?> publicDefineClass(String name, byte[] b, ProtectionDomain protectionDomain) {
+		return defineClass(name, b, 0, b.length, protectionDomain);
+	}
+
+	@Override
+	public ClassLoader getOriginalClassLoader() {
+		return getParent();
 	}
 
 	private URL createFileUrl(String name, ClassLoaderFile file) {
 		try {
-			return new URL("reloaded", null, -1, "/" + name,
-					new ClassLoaderFileURLStreamHandler(file));
+			return new URL("reloaded", null, -1, "/" + name, new ClassLoaderFileURLStreamHandler(file));
 		}
 		catch (MalformedURLException ex) {
 			throw new IllegalStateException(ex);
 		}
-	}
-
-	@Override
-	protected void finalize() throws Throwable {
-		if (this.logger.isDebugEnabled()) {
-			this.logger.debug("Finalized classloader " + toString());
-		}
-		super.finalize();
 	}
 
 	@Override
@@ -195,7 +167,7 @@ public class RestartClassLoader extends URLClassLoader implements SmartClassLoad
 	}
 
 	/**
-	 * Compound {@link Enumeration} that adds an additional item to the front.
+	 * Compound {@link Enumeration} that adds an item to the front.
 	 */
 	private static class CompoundEnumeration<E> implements Enumeration<E> {
 

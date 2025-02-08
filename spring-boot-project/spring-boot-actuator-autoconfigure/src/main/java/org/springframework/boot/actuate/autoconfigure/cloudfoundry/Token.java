@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,19 +17,19 @@
 package org.springframework.boot.actuate.autoconfigure.cloudfoundry;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
 import org.springframework.boot.actuate.autoconfigure.cloudfoundry.CloudFoundryAuthorizationException.Reason;
 import org.springframework.boot.json.JsonParserFactory;
-import org.springframework.util.Base64Utils;
 import org.springframework.util.StringUtils;
 
 /**
  * The JSON web token provided with each request that originates from Cloud Foundry.
  *
  * @author Madhura Bhave
- * @since 2.0.0
+ * @since 1.5.22
  */
 public class Token {
 
@@ -60,13 +60,11 @@ public class Token {
 
 	private Map<String, Object> parseJson(String base64) {
 		try {
-			byte[] bytes = Base64Utils.decodeFromUrlSafeString(base64);
-			return JsonParserFactory.getJsonParser()
-					.parseMap(new String(bytes, StandardCharsets.UTF_8));
+			byte[] bytes = Base64.getUrlDecoder().decode(base64);
+			return JsonParserFactory.getJsonParser().parseMap(new String(bytes, StandardCharsets.UTF_8));
 		}
 		catch (RuntimeException ex) {
-			throw new CloudFoundryAuthorizationException(Reason.INVALID_TOKEN,
-					"Token could not be parsed", ex);
+			throw new CloudFoundryAuthorizationException(Reason.INVALID_TOKEN, "Token could not be parsed", ex);
 		}
 	}
 
@@ -75,7 +73,7 @@ public class Token {
 	}
 
 	public byte[] getSignature() {
-		return Base64Utils.decodeFromUrlSafeString(this.signature);
+		return Base64.getUrlDecoder().decode(this.signature);
 	}
 
 	public String getSignatureAlgorithm() {
@@ -103,8 +101,7 @@ public class Token {
 	private <T> T getRequired(Map<String, Object> map, String key, Class<T> type) {
 		Object value = map.get(key);
 		if (value == null) {
-			throw new CloudFoundryAuthorizationException(Reason.INVALID_TOKEN,
-					"Unable to get value from key " + key);
+			throw new CloudFoundryAuthorizationException(Reason.INVALID_TOKEN, "Unable to get value from key " + key);
 		}
 		if (!type.isInstance(value)) {
 			throw new CloudFoundryAuthorizationException(Reason.INVALID_TOKEN,

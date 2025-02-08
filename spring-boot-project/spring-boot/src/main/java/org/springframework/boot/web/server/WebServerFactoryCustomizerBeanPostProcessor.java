@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -39,8 +39,7 @@ import org.springframework.util.Assert;
  * @author Stephane Nicoll
  * @since 2.0.0
  */
-public class WebServerFactoryCustomizerBeanPostProcessor
-		implements BeanPostProcessor, BeanFactoryAware {
+public class WebServerFactoryCustomizerBeanPostProcessor implements BeanPostProcessor, BeanFactoryAware {
 
 	private ListableBeanFactory beanFactory;
 
@@ -48,34 +47,28 @@ public class WebServerFactoryCustomizerBeanPostProcessor
 
 	@Override
 	public void setBeanFactory(BeanFactory beanFactory) {
-		Assert.isInstanceOf(ListableBeanFactory.class, beanFactory,
-				"WebServerCustomizerBeanPostProcessor can only be used "
-						+ "with a ListableBeanFactory");
+		Assert.isInstanceOf(ListableBeanFactory.class, beanFactory, "'beanFactory' must be a ListableBeanFactory");
 		this.beanFactory = (ListableBeanFactory) beanFactory;
 	}
 
 	@Override
-	public Object postProcessBeforeInitialization(Object bean, String beanName)
-			throws BeansException {
-		if (bean instanceof WebServerFactory) {
-			postProcessBeforeInitialization((WebServerFactory) bean);
+	public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
+		if (bean instanceof WebServerFactory webServerFactory) {
+			postProcessBeforeInitialization(webServerFactory);
 		}
 		return bean;
 	}
 
 	@Override
-	public Object postProcessAfterInitialization(Object bean, String beanName)
-			throws BeansException {
+	public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
 		return bean;
 	}
 
 	@SuppressWarnings("unchecked")
 	private void postProcessBeforeInitialization(WebServerFactory webServerFactory) {
-		LambdaSafe
-				.callbacks(WebServerFactoryCustomizer.class, getCustomizers(),
-						webServerFactory)
-				.withLogger(WebServerFactoryCustomizerBeanPostProcessor.class)
-				.invoke((customizer) -> customizer.customize(webServerFactory));
+		LambdaSafe.callbacks(WebServerFactoryCustomizer.class, getCustomizers(), webServerFactory)
+			.withLogger(WebServerFactoryCustomizerBeanPostProcessor.class)
+			.invoke((customizer) -> customizer.customize(webServerFactory));
 	}
 
 	private Collection<WebServerFactoryCustomizer<?>> getCustomizers() {
@@ -90,8 +83,7 @@ public class WebServerFactoryCustomizerBeanPostProcessor
 
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	private Collection<WebServerFactoryCustomizer<?>> getWebServerFactoryCustomizerBeans() {
-		return (Collection) this.beanFactory
-				.getBeansOfType(WebServerFactoryCustomizer.class, false, false).values();
+		return (Collection) this.beanFactory.getBeansOfType(WebServerFactoryCustomizer.class, false, false).values();
 	}
 
 }

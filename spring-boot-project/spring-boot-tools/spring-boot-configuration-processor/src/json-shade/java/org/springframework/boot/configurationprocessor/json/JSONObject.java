@@ -5,7 +5,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,8 +18,8 @@ package org.springframework.boot.configurationprocessor.json;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 // Note: this class was written without inspecting the non-free org.json source code.
@@ -41,11 +41,11 @@ import java.util.Map;
  * <li>When the requested type is an int, other {@link Number} types will be coerced using
  * {@link Number#intValue() intValue}. Strings that can be coerced using
  * {@link Double#valueOf(String)} will be, and then cast to int.
- * <li><a name="lossy">When the requested type is a long, other {@link Number} types will
- * be coerced using {@link Number#longValue() longValue}. Strings that can be coerced
- * using {@link Double#valueOf(String)} will be, and then cast to long. This two-step
- * conversion is lossy for very large values. For example, the string
- * "9223372036854775806" yields the long 9223372036854775807.</a>
+ * <li><a id="lossy">When the requested type is a long, other {@link Number} types will be
+ * coerced using {@link Number#longValue() longValue}. Strings that can be coerced using
+ * {@link Double#valueOf(String)} will be, and then cast to long. This two-step conversion
+ * is lossy for very large values. For example, the string "9223372036854775806" yields
+ * the long 9223372036854775807.</a>
  * <li>When the requested type is a String, other non-null values will be coerced using
  * {@link String#valueOf(Object)}. Although null cannot be coerced, the sentinel value
  * {@link JSONObject#NULL} is coerced to the string "null".
@@ -111,13 +111,12 @@ public class JSONObject {
 	 * Creates a {@code JSONObject} with no name/value mappings.
 	 */
 	public JSONObject() {
-		this.nameValuePairs = new HashMap<>();
+		this.nameValuePairs = new LinkedHashMap<>();
 	}
 
 	/**
 	 * Creates a new {@code JSONObject} by copying all name/value mappings from the given
 	 * map.
-	 *
 	 * @param copyFrom a map whose keys are of type {@link String} and whose values are of
 	 * supported types.
 	 * @throws NullPointerException if any of the map's keys are null.
@@ -312,8 +311,7 @@ public class JSONObject {
 			JSON.checkDouble(((Number) value).doubleValue());
 		}
 
-		if (current instanceof JSONArray) {
-			JSONArray array = (JSONArray) current;
+		if (current instanceof JSONArray array) {
 			array.put(value);
 		}
 		else {
@@ -334,7 +332,6 @@ public class JSONObject {
 
 	/**
 	 * Removes the named mapping if it exists; does nothing otherwise.
-	 *
 	 * @param name the name of the property
 	 * @return the value previously mapped by {@code name}, or null if there was no such
 	 * mapping.
@@ -430,7 +427,6 @@ public class JSONObject {
 	/**
 	 * Returns the value mapped by {@code name} if it exists and is a double or can be
 	 * coerced to a double.
-	 *
 	 * @param name the name of the property
 	 * @return the value
 	 * @throws JSONException if the mapping doesn't exist or cannot be coerced to a
@@ -510,7 +506,7 @@ public class JSONObject {
 	/**
 	 * Returns the value mapped by {@code name} if it exists and is a long or can be
 	 * coerced to a long. Note that JSON represents numbers as doubles, so this is
-	 * <a href="#lossy">lossy</a>; use strings to transfer numbers via JSON.
+	 * <a href="#lossy">lossy</a>; use strings to transfer numbers over JSON.
 	 * @param name the name of the property
 	 * @return the value
 	 * @throws JSONException if the mapping doesn't exist or cannot be coerced to a long.
@@ -540,7 +536,7 @@ public class JSONObject {
 	 * Returns the value mapped by {@code name} if it exists and is a long or can be
 	 * coerced to a long. Returns {@code fallback} otherwise. Note that JSON represents
 	 * numbers as doubles, so this is <a href="#lossy">lossy</a>; use strings to transfer
-	 * numbers via JSON.
+	 * numbers over JSON.
 	 * @param name the name of the property
 	 * @param fallback a fallback value
 	 * @return the value or {@code fallback}
@@ -690,8 +686,7 @@ public class JSONObject {
 	 * @return the array
 	 */
 	public JSONArray names() {
-		return this.nameValuePairs.isEmpty() ? null
-				: new JSONArray(new ArrayList<>(this.nameValuePairs.keySet()));
+		return this.nameValuePairs.isEmpty() ? null : new JSONArray(new ArrayList<>(this.nameValuePairs.keySet()));
 	}
 
 	/**
@@ -712,7 +707,7 @@ public class JSONObject {
 	}
 
 	/**
-	 * Encodes this object as a human readable JSON string for debugging, such as: <pre>
+	 * Encodes this object as a human-readable JSON string for debugging, such as: <pre>
 	 * {
 	 *     "query": "Pizza",
 	 *     "locations": [
@@ -791,7 +786,7 @@ public class JSONObject {
 	/**
 	 * Wraps the given object if necessary.
 	 * <p>
-	 * If the object is null or , returns {@link #NULL}. If the object is a
+	 * If the object is null or, returns {@link #NULL}. If the object is a
 	 * {@code JSONArray} or {@code JSONObject}, no wrapping is necessary. If the object is
 	 * {@code NULL}, no wrapping is necessary. If the object is an array or
 	 * {@code Collection}, returns an equivalent {@code JSONArray}. If the object is a
@@ -823,16 +818,17 @@ public class JSONObject {
 			if (o instanceof Map) {
 				return new JSONObject((Map) o);
 			}
-			if (o instanceof Boolean || o instanceof Byte || o instanceof Character
-					|| o instanceof Double || o instanceof Float || o instanceof Integer
-					|| o instanceof Long || o instanceof Short || o instanceof String) {
+			if (o instanceof Boolean || o instanceof Byte || o instanceof Character || o instanceof Double
+					|| o instanceof Float || o instanceof Integer || o instanceof Long || o instanceof Short
+					|| o instanceof String) {
 				return o;
 			}
 			if (o.getClass().getPackage().getName().startsWith("java.")) {
 				return o.toString();
 			}
 		}
-		catch (Exception ignored) {
+		catch (Exception ex) {
+			// Ignore
 		}
 		return null;
 	}

@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,9 +16,10 @@
 
 package org.springframework.boot.diagnostics.analyzer;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import org.springframework.beans.factory.BeanCreationException;
+import org.springframework.beans.factory.NoUniqueBeanDefinitionException;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.diagnostics.FailureAnalysis;
@@ -36,115 +37,118 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Tests for {@link NoUniqueBeanDefinitionFailureAnalyzer}.
  *
  * @author Andy Wilkinson
+ * @author Scott Frederick
  */
-public class NoUniqueBeanDefinitionFailureAnalyzerTests {
+class NoUniqueBeanDefinitionFailureAnalyzerTests {
 
-	private final NoUniqueBeanDefinitionFailureAnalyzer analyzer = new NoUniqueBeanDefinitionFailureAnalyzer();
+	private final AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
+
+	private final NoUniqueBeanDefinitionFailureAnalyzer analyzer = new NoUniqueBeanDefinitionFailureAnalyzer(
+			this.context.getBeanFactory());
 
 	@Test
-	public void failureAnalysisForFieldConsumer() {
-		FailureAnalysis failureAnalysis = analyzeFailure(
-				createFailure(FieldConsumer.class));
+	void failureAnalysisForFieldConsumer() {
+		FailureAnalysis failureAnalysis = analyzeFailure(createFailure(FieldConsumer.class));
+		assertThat(failureAnalysis.getDescription()).startsWith(
+				"Field testBean in " + FieldConsumer.class.getName() + " required a single bean, but 6 were found:");
+		assertFoundBeans(failureAnalysis);
+	}
+
+	@Test
+	void failureAnalysisForMethodConsumer() {
+		FailureAnalysis failureAnalysis = analyzeFailure(createFailure(MethodConsumer.class));
+		assertThat(failureAnalysis.getDescription()).startsWith("Parameter 0 of method consumer in "
+				+ MethodConsumer.class.getName() + " required a single bean, but 6 were found:");
+		assertFoundBeans(failureAnalysis);
+	}
+
+	@Test
+	void failureAnalysisForConstructorConsumer() {
+		FailureAnalysis failureAnalysis = analyzeFailure(createFailure(ConstructorConsumer.class));
+		assertThat(failureAnalysis.getDescription()).startsWith("Parameter 0 of constructor in "
+				+ ConstructorConsumer.class.getName() + " required a single bean, but 6 were found:");
+		assertFoundBeans(failureAnalysis);
+	}
+
+	@Test
+	void failureAnalysisForObjectProviderMethodConsumer() {
+		FailureAnalysis failureAnalysis = analyzeFailure(createFailure(ObjectProviderMethodConsumer.class));
+		assertThat(failureAnalysis.getDescription()).startsWith("Method consumer in "
+				+ ObjectProviderMethodConsumer.class.getName() + " required a single bean, but 6 were found:");
+		assertFoundBeans(failureAnalysis);
+	}
+
+	@Test
+	void failureAnalysisForXmlConsumer() {
+		FailureAnalysis failureAnalysis = analyzeFailure(createFailure(XmlConsumer.class));
+		assertThat(failureAnalysis.getDescription()).startsWith("Parameter 0 of constructor in "
+				+ TestBeanConsumer.class.getName() + " required a single bean, but 6 were found:");
+		assertFoundBeans(failureAnalysis);
+	}
+
+	@Test
+	void failureAnalysisForObjectProviderConstructorConsumer() {
+		FailureAnalysis failureAnalysis = analyzeFailure(createFailure(ObjectProviderConstructorConsumer.class));
+		assertThat(failureAnalysis.getDescription()).startsWith("Constructor in "
+				+ ObjectProviderConstructorConsumer.class.getName() + " required a single bean, but 6 were found:");
+		assertFoundBeans(failureAnalysis);
+	}
+
+	@Test
+	void failureAnalysisIncludesPossiblyMissingParameterNames() {
+		FailureAnalysis failureAnalysis = analyzeFailure(createFailure(MethodConsumer.class));
+		assertThat(failureAnalysis.getDescription()).contains(MissingParameterNamesFailureAnalyzer.POSSIBILITY);
+		assertThat(failureAnalysis.getAction()).contains(MissingParameterNamesFailureAnalyzer.ACTION);
+		assertFoundBeans(failureAnalysis);
+	}
+
+	@Test
+	void failureAnalysisWithoutInjectionPoints() {
+		this.context.registerBean("beanOne", TestBean.class);
+		this.context.register(DuplicateBeansProducer.class);
+		this.context.refresh();
+		FailureAnalysis failureAnalysis = analyzeFailure(new NoUniqueBeanDefinitionException(TestBean.class, 3,
+				"no TestBeanProvider specified and expected single matching TestBean but found 3: beanOne,beanTwo,xmlBean"));
 		assertThat(failureAnalysis.getDescription())
-				.startsWith("Field testBean in " + FieldConsumer.class.getName()
-						+ " required a single bean, but 6 were found:");
-		assertFoundBeans(failureAnalysis);
-	}
-
-	@Test
-	public void failureAnalysisForMethodConsumer() {
-		FailureAnalysis failureAnalysis = analyzeFailure(
-				createFailure(MethodConsumer.class));
-		assertThat(failureAnalysis.getDescription()).startsWith(
-				"Parameter 0 of method consumer in " + MethodConsumer.class.getName()
-						+ " required a single bean, but 6 were found:");
-		assertFoundBeans(failureAnalysis);
-	}
-
-	@Test
-	public void failureAnalysisForConstructorConsumer() {
-		FailureAnalysis failureAnalysis = analyzeFailure(
-				createFailure(ConstructorConsumer.class));
-		assertThat(failureAnalysis.getDescription()).startsWith(
-				"Parameter 0 of constructor in " + ConstructorConsumer.class.getName()
-						+ " required a single bean, but 6 were found:");
-		assertFoundBeans(failureAnalysis);
-	}
-
-	@Test
-	public void failureAnalysisForObjectProviderMethodConsumer() {
-		FailureAnalysis failureAnalysis = analyzeFailure(
-				createFailure(ObjectProviderMethodConsumer.class));
-		assertThat(failureAnalysis.getDescription()).startsWith(
-				"Method consumer in " + ObjectProviderMethodConsumer.class.getName()
-						+ " required a single bean, but 6 were found:");
-		assertFoundBeans(failureAnalysis);
-	}
-
-	@Test
-	public void failureAnalysisForXmlConsumer() {
-		FailureAnalysis failureAnalysis = analyzeFailure(
-				createFailure(XmlConsumer.class));
-		assertThat(failureAnalysis.getDescription()).startsWith(
-				"Parameter 0 of constructor in " + TestBeanConsumer.class.getName()
-						+ " required a single bean, but 6 were found:");
-		assertFoundBeans(failureAnalysis);
-	}
-
-	@Test
-	public void failureAnalysisForObjectProviderConstructorConsumer() {
-		FailureAnalysis failureAnalysis = analyzeFailure(
-				createFailure(ObjectProviderConstructorConsumer.class));
-		assertThat(failureAnalysis.getDescription()).startsWith(
-				"Constructor in " + ObjectProviderConstructorConsumer.class.getName()
-						+ " required a single bean, but 6 were found:");
-		assertFoundBeans(failureAnalysis);
+			.startsWith("A component required a single bean, but 3 were found:");
+		assertThat(failureAnalysis.getDescription()).contains("beanOne: defined in unknown location");
+		assertThat(failureAnalysis.getDescription())
+			.contains("beanTwo: defined by method 'beanTwo' in " + DuplicateBeansProducer.class.getName());
+		assertThat(failureAnalysis.getDescription()).contains("xmlBean: a programmatically registered singleton");
 	}
 
 	private BeanCreationException createFailure(Class<?> consumer) {
-		try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
-			context.register(DuplicateBeansProducer.class, consumer);
-			context.setParent(
-					new AnnotationConfigApplicationContext(ParentProducer.class));
-			try {
-				context.refresh();
-			}
-			catch (BeanCreationException ex) {
-				this.analyzer.setBeanFactory(context.getBeanFactory());
-				return ex;
-			}
-			return null;
+		this.context.registerBean("beanOne", TestBean.class);
+		this.context.register(DuplicateBeansProducer.class, consumer);
+		this.context.setParent(new AnnotationConfigApplicationContext(ParentProducer.class));
+		try {
+			this.context.refresh();
 		}
+		catch (BeanCreationException ex) {
+			return ex;
+		}
+		return null;
 	}
 
-	private FailureAnalysis analyzeFailure(BeanCreationException failure) {
+	private FailureAnalysis analyzeFailure(Exception failure) {
 		return this.analyzer.analyze(failure);
 	}
 
 	private void assertFoundBeans(FailureAnalysis analysis) {
+		assertThat(analysis.getDescription()).contains("beanOne: defined in unknown location");
 		assertThat(analysis.getDescription())
-				.contains("beanOne: defined by method 'beanOne' in "
-						+ DuplicateBeansProducer.class.getName());
+			.contains("beanTwo: defined by method 'beanTwo' in " + DuplicateBeansProducer.class.getName());
 		assertThat(analysis.getDescription())
-				.contains("beanTwo: defined by method 'beanTwo' in "
-						+ DuplicateBeansProducer.class.getName());
-		assertThat(analysis.getDescription())
-				.contains("beanThree: defined by method 'beanThree' in "
-						+ ParentProducer.class.getName());
+			.contains("beanThree: defined by method 'beanThree' in " + ParentProducer.class.getName());
 		assertThat(analysis.getDescription()).contains("barTestBean");
 		assertThat(analysis.getDescription()).contains("fooTestBean");
 		assertThat(analysis.getDescription()).contains("xmlTestBean");
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	@ComponentScan(basePackageClasses = TestBean.class)
 	@ImportResource("/org/springframework/boot/diagnostics/analyzer/nounique/producer.xml")
 	static class DuplicateBeansProducer {
-
-		@Bean
-		TestBean beanOne() {
-			return new TestBean();
-		}
 
 		@Bean
 		TestBean beanTwo() {
@@ -153,6 +157,7 @@ public class NoUniqueBeanDefinitionFailureAnalyzerTests {
 
 	}
 
+	@Configuration(proxyBeanMethods = false)
 	static class ParentProducer {
 
 		@Bean
@@ -162,7 +167,7 @@ public class NoUniqueBeanDefinitionFailureAnalyzerTests {
 
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	static class FieldConsumer {
 
 		@SuppressWarnings("unused")
@@ -171,7 +176,7 @@ public class NoUniqueBeanDefinitionFailureAnalyzerTests {
 
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	static class ObjectProviderConstructorConsumer {
 
 		ObjectProviderConstructorConsumer(ObjectProvider<TestBean> objectProvider) {
@@ -180,7 +185,7 @@ public class NoUniqueBeanDefinitionFailureAnalyzerTests {
 
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	static class ConstructorConsumer {
 
 		ConstructorConsumer(TestBean testBean) {
@@ -189,7 +194,7 @@ public class NoUniqueBeanDefinitionFailureAnalyzerTests {
 
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	static class MethodConsumer {
 
 		@Bean
@@ -199,7 +204,7 @@ public class NoUniqueBeanDefinitionFailureAnalyzerTests {
 
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	static class ObjectProviderMethodConsumer {
 
 		@Bean
@@ -210,7 +215,7 @@ public class NoUniqueBeanDefinitionFailureAnalyzerTests {
 
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	@ImportResource("/org/springframework/boot/diagnostics/analyzer/nounique/consumer.xml")
 	static class XmlConsumer {
 

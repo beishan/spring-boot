@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +18,7 @@ package org.springframework.boot.autoconfigure.web.reactive;
 
 import org.springframework.boot.autoconfigure.web.ServerProperties;
 import org.springframework.boot.context.properties.PropertyMapper;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.boot.web.reactive.server.ConfigurableReactiveWebServerFactory;
 import org.springframework.boot.web.server.WebServerFactoryCustomizer;
 import org.springframework.core.Ordered;
@@ -28,15 +29,33 @@ import org.springframework.core.Ordered;
  *
  * @author Brian Clozel
  * @author Yunkun Huang
+ * @author Scott Frederick
  * @since 2.0.0
  */
-public class ReactiveWebServerFactoryCustomizer implements
-		WebServerFactoryCustomizer<ConfigurableReactiveWebServerFactory>, Ordered {
+public class ReactiveWebServerFactoryCustomizer
+		implements WebServerFactoryCustomizer<ConfigurableReactiveWebServerFactory>, Ordered {
 
 	private final ServerProperties serverProperties;
 
+	private final SslBundles sslBundles;
+
+	/**
+	 * Create a new {@link ReactiveWebServerFactoryCustomizer} instance.
+	 * @param serverProperties the server properties
+	 */
 	public ReactiveWebServerFactoryCustomizer(ServerProperties serverProperties) {
+		this(serverProperties, null);
+	}
+
+	/**
+	 * Create a new {@link ReactiveWebServerFactoryCustomizer} instance.
+	 * @param serverProperties the server properties
+	 * @param sslBundles the SSL bundles
+	 * @since 3.1.0
+	 */
+	public ReactiveWebServerFactoryCustomizer(ServerProperties serverProperties, SslBundles sslBundles) {
 		this.serverProperties = serverProperties;
+		this.sslBundles = sslBundles;
 	}
 
 	@Override
@@ -52,6 +71,8 @@ public class ReactiveWebServerFactoryCustomizer implements
 		map.from(this.serverProperties::getSsl).to(factory::setSsl);
 		map.from(this.serverProperties::getCompression).to(factory::setCompression);
 		map.from(this.serverProperties::getHttp2).to(factory::setHttp2);
+		map.from(this.serverProperties.getShutdown()).to(factory::setShutdown);
+		map.from(() -> this.sslBundles).to(factory::setSslBundles);
 	}
 
 }

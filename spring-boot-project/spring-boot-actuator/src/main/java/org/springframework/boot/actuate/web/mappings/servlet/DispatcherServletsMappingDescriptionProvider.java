@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,17 +19,23 @@ package org.springframework.boot.actuate.web.mappings.servlet;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import jakarta.servlet.Servlet;
+
+import org.springframework.aot.hint.BindingReflectionHintsRegistrar;
+import org.springframework.aot.hint.RuntimeHints;
+import org.springframework.aot.hint.RuntimeHintsRegistrar;
 import org.springframework.boot.actuate.web.mappings.HandlerMethodDescription;
 import org.springframework.boot.actuate.web.mappings.MappingDescriptionProvider;
+import org.springframework.boot.actuate.web.mappings.servlet.DispatcherServletsMappingDescriptionProvider.DispatcherServletsMappingDescriptionProviderRuntimeHints;
+import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.context.ApplicationContext;
-import org.springframework.data.rest.webmvc.support.DelegatingHandlerMapping;
-import org.springframework.util.ClassUtils;
+import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.DispatcherServlet;
@@ -44,23 +50,19 @@ import org.springframework.web.servlet.mvc.method.RequestMappingInfoHandlerMappi
  * DispatcherServlets}.
  *
  * @author Andy Wilkinson
+ * @author Stephane Nicoll
  * @since 2.0.0
  */
-public class DispatcherServletsMappingDescriptionProvider
-		implements MappingDescriptionProvider {
+@ImportRuntimeHints(DispatcherServletsMappingDescriptionProviderRuntimeHints.class)
+public class DispatcherServletsMappingDescriptionProvider implements MappingDescriptionProvider {
 
-	private static final List<HandlerMappingDescriptionProvider<? extends HandlerMapping>> descriptionProviders;
+	private static final List<HandlerMappingDescriptionProvider<?>> descriptionProviders;
 
 	static {
-		List<HandlerMappingDescriptionProvider<? extends HandlerMapping>> providers = new ArrayList<>();
+		List<HandlerMappingDescriptionProvider<?>> providers = new ArrayList<>();
 		providers.add(new RequestMappingInfoHandlerMappingDescriptionProvider());
 		providers.add(new UrlHandlerMappingDescriptionProvider());
-		if (ClassUtils.isPresent(
-				"org.springframework.data.rest.webmvc.support.DelegatingHandlerMapping",
-				null)) {
-			providers.add(new DelegatingHandlerMappingDescriptionProvider(
-					new ArrayList<>(providers)));
-		}
+		providers.add(new IterableDelegatesHandlerMappingDescriptionProvider(new ArrayList<>(providers)));
 		descriptionProviders = Collections.unmodifiableList(providers);
 	}
 
@@ -70,49 +72,56 @@ public class DispatcherServletsMappingDescriptionProvider
 	}
 
 	@Override
-	public Map<String, List<DispatcherServletMappingDescription>> describeMappings(
-			ApplicationContext context) {
-		if (context instanceof WebApplicationContext) {
-			return describeMappings((WebApplicationContext) context);
+	public Map<String, List<DispatcherServletMappingDescription>> describeMappings(ApplicationContext context) {
+		if (context instanceof WebApplicationContext webApplicationContext) {
+			return describeMappings(webApplicationContext);
 		}
 		return Collections.emptyMap();
 	}
 
-	private Map<String, List<DispatcherServletMappingDescription>> describeMappings(
-			WebApplicationContext context) {
+	private Map<String, List<DispatcherServletMappingDescription>> describeMappings(WebApplicationContext context) {
 		Map<String, List<DispatcherServletMappingDescription>> mappings = new HashMap<>();
-		context.getBeansOfType(DispatcherServlet.class)
-				.forEach((name, dispatcherServlet) -> mappings.put(name,
-						describeMappings(new DispatcherServletHandlerMappings(name,
-								dispatcherServlet, context))));
+		determineDispatcherServlets(context).forEach((name, dispatcherServlet) -> mappings.put(name,
+				describeMappings(new DispatcherServletHandlerMappings(name, dispatcherServlet, context))));
 		return mappings;
 	}
 
-	private List<DispatcherServletMappingDescription> describeMappings(
-			DispatcherServletHandlerMappings mappings) {
-		return mappings.getHandlerMappings().stream().flatMap(this::describe)
-				.collect(Collectors.toList());
+	private Map<String, DispatcherServlet> determineDispatcherServlets(WebApplicationContext context) {
+		Map<String, DispatcherServlet> dispatcherServlets = new LinkedHashMap<>();
+		context.getBeansOfType(ServletRegistrationBean.class).values().forEach((registration) -> {
+			Servlet servlet = registration.getServlet();
+			if (servlet instanceof DispatcherServlet && !dispatcherServlets.containsValue(servlet)) {
+				dispatcherServlets.put(registration.getServletName(), (DispatcherServlet) servlet);
+			}
+		});
+		context.getBeansOfType(DispatcherServlet.class).forEach((name, dispatcherServlet) -> {
+			if (!dispatcherServlets.containsValue(dispatcherServlet)) {
+				dispatcherServlets.put(name, dispatcherServlet);
+			}
+		});
+		return dispatcherServlets;
 	}
 
-	private <T extends HandlerMapping> Stream<DispatcherServletMappingDescription> describe(
-			T handlerMapping) {
+	private List<DispatcherServletMappingDescription> describeMappings(DispatcherServletHandlerMappings mappings) {
+		return mappings.getHandlerMappings().stream().flatMap(this::describe).toList();
+	}
+
+	private <T> Stream<DispatcherServletMappingDescription> describe(T handlerMapping) {
 		return describe(handlerMapping, descriptionProviders).stream();
 	}
 
 	@SuppressWarnings("unchecked")
-	private static <T extends HandlerMapping> List<DispatcherServletMappingDescription> describe(
-			T handlerMapping,
+	private static <T> List<DispatcherServletMappingDescription> describe(T handlerMapping,
 			List<HandlerMappingDescriptionProvider<?>> descriptionProviders) {
 		for (HandlerMappingDescriptionProvider<?> descriptionProvider : descriptionProviders) {
 			if (descriptionProvider.getMappingClass().isInstance(handlerMapping)) {
-				return ((HandlerMappingDescriptionProvider<T>) descriptionProvider)
-						.describe(handlerMapping);
+				return ((HandlerMappingDescriptionProvider<T>) descriptionProvider).describe(handlerMapping);
 			}
 		}
 		return Collections.emptyList();
 	}
 
-	private interface HandlerMappingDescriptionProvider<T extends HandlerMapping> {
+	private interface HandlerMappingDescriptionProvider<T> {
 
 		Class<T> getMappingClass();
 
@@ -121,8 +130,7 @@ public class DispatcherServletsMappingDescriptionProvider
 	}
 
 	private static final class RequestMappingInfoHandlerMappingDescriptionProvider
-			implements
-			HandlerMappingDescriptionProvider<RequestMappingInfoHandlerMapping> {
+			implements HandlerMappingDescriptionProvider<RequestMappingInfoHandlerMapping> {
 
 		@Override
 		public Class<RequestMappingInfoHandlerMapping> getMappingClass() {
@@ -130,23 +138,17 @@ public class DispatcherServletsMappingDescriptionProvider
 		}
 
 		@Override
-		public List<DispatcherServletMappingDescription> describe(
-				RequestMappingInfoHandlerMapping handlerMapping) {
-			Map<RequestMappingInfo, HandlerMethod> handlerMethods = handlerMapping
-					.getHandlerMethods();
-			return handlerMethods.entrySet().stream().map(this::describe)
-					.collect(Collectors.toList());
+		public List<DispatcherServletMappingDescription> describe(RequestMappingInfoHandlerMapping handlerMapping) {
+			Map<RequestMappingInfo, HandlerMethod> handlerMethods = handlerMapping.getHandlerMethods();
+			return handlerMethods.entrySet().stream().map(this::describe).toList();
 		}
 
-		private DispatcherServletMappingDescription describe(
-				Entry<RequestMappingInfo, HandlerMethod> mapping) {
+		private DispatcherServletMappingDescription describe(Entry<RequestMappingInfo, HandlerMethod> mapping) {
 			DispatcherServletMappingDetails mappingDetails = new DispatcherServletMappingDetails();
-			mappingDetails
-					.setHandlerMethod(new HandlerMethodDescription(mapping.getValue()));
-			mappingDetails.setRequestMappingConditions(
-					new RequestMappingConditionsDescription(mapping.getKey()));
-			return new DispatcherServletMappingDescription(mapping.getKey().toString(),
-					mapping.getValue().toString(), mappingDetails);
+			mappingDetails.setHandlerMethod(new HandlerMethodDescription(mapping.getValue()));
+			mappingDetails.setRequestMappingConditions(new RequestMappingConditionsDescription(mapping.getKey()));
+			return new DispatcherServletMappingDescription(mapping.getKey().toString(), mapping.getValue().toString(),
+					mappingDetails);
 		}
 
 	}
@@ -160,44 +162,52 @@ public class DispatcherServletsMappingDescriptionProvider
 		}
 
 		@Override
-		public List<DispatcherServletMappingDescription> describe(
-				AbstractUrlHandlerMapping handlerMapping) {
-			return handlerMapping.getHandlerMap().entrySet().stream().map(this::describe)
-					.collect(Collectors.toList());
+		public List<DispatcherServletMappingDescription> describe(AbstractUrlHandlerMapping handlerMapping) {
+			return handlerMapping.getHandlerMap().entrySet().stream().map(this::describe).toList();
 		}
 
-		private DispatcherServletMappingDescription describe(
-				Entry<String, Object> mapping) {
-			return new DispatcherServletMappingDescription(mapping.getKey(),
-					mapping.getValue().toString(), null);
+		private DispatcherServletMappingDescription describe(Entry<String, Object> mapping) {
+			return new DispatcherServletMappingDescription(mapping.getKey(), mapping.getValue().toString(), null);
 		}
 
 	}
 
-	private static final class DelegatingHandlerMappingDescriptionProvider
-			implements HandlerMappingDescriptionProvider<DelegatingHandlerMapping> {
+	@SuppressWarnings("rawtypes")
+	private static final class IterableDelegatesHandlerMappingDescriptionProvider
+			implements HandlerMappingDescriptionProvider<Iterable> {
 
 		private final List<HandlerMappingDescriptionProvider<?>> descriptionProviders;
 
-		private DelegatingHandlerMappingDescriptionProvider(
+		private IterableDelegatesHandlerMappingDescriptionProvider(
 				List<HandlerMappingDescriptionProvider<?>> descriptionProviders) {
 			this.descriptionProviders = descriptionProviders;
 		}
 
 		@Override
-		public Class<DelegatingHandlerMapping> getMappingClass() {
-			return DelegatingHandlerMapping.class;
+		public Class<Iterable> getMappingClass() {
+			return Iterable.class;
 		}
 
 		@Override
-		public List<DispatcherServletMappingDescription> describe(
-				DelegatingHandlerMapping handlerMapping) {
+		public List<DispatcherServletMappingDescription> describe(Iterable handlerMapping) {
 			List<DispatcherServletMappingDescription> descriptions = new ArrayList<>();
-			for (HandlerMapping delegate : handlerMapping.getDelegates()) {
-				descriptions.addAll(DispatcherServletsMappingDescriptionProvider
-						.describe(delegate, this.descriptionProviders));
+			for (Object delegate : handlerMapping) {
+				descriptions
+					.addAll(DispatcherServletsMappingDescriptionProvider.describe(delegate, this.descriptionProviders));
 			}
 			return descriptions;
+		}
+
+	}
+
+	static class DispatcherServletsMappingDescriptionProviderRuntimeHints implements RuntimeHintsRegistrar {
+
+		private final BindingReflectionHintsRegistrar bindingRegistrar = new BindingReflectionHintsRegistrar();
+
+		@Override
+		public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
+			this.bindingRegistrar.registerReflectionHints(hints.reflection(),
+					DispatcherServletMappingDescription.class);
 		}
 
 	}

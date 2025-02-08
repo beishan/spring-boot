@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,7 +16,10 @@
 
 package org.springframework.boot.autoconfigure.mongo;
 
-import com.mongodb.MongoClientURI;
+import java.util.List;
+
+import com.mongodb.ConnectionString;
+import org.bson.UuidRepresentation;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -31,8 +34,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @author Stephane Nicoll
  * @author Nasko Vasilev
  * @author Mark Paluch
+ * @author Artsiom Yudovin
+ * @author Safeer Ansari
+ * @since 1.0.0
  */
-@ConfigurationProperties(prefix = "spring.data.mongodb")
+@ConfigurationProperties("spring.data.mongodb")
 public class MongoProperties {
 
 	/**
@@ -56,12 +62,19 @@ public class MongoProperties {
 	private Integer port = null;
 
 	/**
-	 * Mongo database URI. Cannot be set with host, port and credentials.
+	 * Additional server hosts. Cannot be set with URI or if 'host' is not specified.
+	 * Additional hosts will use the default mongo port of 27017. If you want to use a
+	 * different port you can use the "host:port" syntax.
+	 */
+	private List<String> additionalHosts;
+
+	/**
+	 * Mongo database URI. Overrides host, port, username, and password.
 	 */
 	private String uri;
 
 	/**
-	 * Database name.
+	 * Database name. Overrides database in URI.
 	 */
 	private String database;
 
@@ -70,10 +83,7 @@ public class MongoProperties {
 	 */
 	private String authenticationDatabase;
 
-	/**
-	 * GridFS database name.
-	 */
-	private String gridFsDatabase;
+	private final Gridfs gridfs = new Gridfs();
 
 	/**
 	 * Login user of the mongo server. Cannot be set with URI.
@@ -86,9 +96,26 @@ public class MongoProperties {
 	private char[] password;
 
 	/**
+	 * Required replica set name for the cluster. Cannot be set with URI.
+	 */
+	private String replicaSetName;
+
+	/**
 	 * Fully qualified name of the FieldNamingStrategy to use.
 	 */
 	private Class<?> fieldNamingStrategy;
+
+	/**
+	 * Representation to use when converting a UUID to a BSON binary value.
+	 */
+	private UuidRepresentation uuidRepresentation = UuidRepresentation.JAVA_LEGACY;
+
+	private final Ssl ssl = new Ssl();
+
+	/**
+	 * Whether to enable auto-index creation.
+	 */
+	private Boolean autoIndexCreation;
 
 	public String getHost() {
 		return this.host;
@@ -130,6 +157,14 @@ public class MongoProperties {
 		this.password = password;
 	}
 
+	public String getReplicaSetName() {
+		return this.replicaSetName;
+	}
+
+	public void setReplicaSetName(String replicaSetName) {
+		this.replicaSetName = replicaSetName;
+	}
+
 	public Class<?> getFieldNamingStrategy() {
 		return this.fieldNamingStrategy;
 	}
@@ -138,12 +173,20 @@ public class MongoProperties {
 		this.fieldNamingStrategy = fieldNamingStrategy;
 	}
 
+	public UuidRepresentation getUuidRepresentation() {
+		return this.uuidRepresentation;
+	}
+
+	public void setUuidRepresentation(UuidRepresentation uuidRepresentation) {
+		this.uuidRepresentation = uuidRepresentation;
+	}
+
 	public String getUri() {
 		return this.uri;
 	}
 
 	public String determineUri() {
-		return (this.uri != null ? this.uri : DEFAULT_URI);
+		return (this.uri != null) ? this.uri : DEFAULT_URI;
 	}
 
 	public void setUri(String uri) {
@@ -158,19 +201,96 @@ public class MongoProperties {
 		this.port = port;
 	}
 
-	public String getGridFsDatabase() {
-		return this.gridFsDatabase;
-	}
-
-	public void setGridFsDatabase(String gridFsDatabase) {
-		this.gridFsDatabase = gridFsDatabase;
+	public Gridfs getGridfs() {
+		return this.gridfs;
 	}
 
 	public String getMongoClientDatabase() {
 		if (this.database != null) {
 			return this.database;
 		}
-		return new MongoClientURI(determineUri()).getDatabase();
+		return new ConnectionString(determineUri()).getDatabase();
+	}
+
+	public Boolean isAutoIndexCreation() {
+		return this.autoIndexCreation;
+	}
+
+	public void setAutoIndexCreation(Boolean autoIndexCreation) {
+		this.autoIndexCreation = autoIndexCreation;
+	}
+
+	public List<String> getAdditionalHosts() {
+		return this.additionalHosts;
+	}
+
+	public void setAdditionalHosts(List<String> additionalHosts) {
+		this.additionalHosts = additionalHosts;
+	}
+
+	public Ssl getSsl() {
+		return this.ssl;
+	}
+
+	public static class Gridfs {
+
+		/**
+		 * GridFS database name.
+		 */
+		private String database;
+
+		/**
+		 * GridFS bucket name.
+		 */
+		private String bucket;
+
+		public String getDatabase() {
+			return this.database;
+		}
+
+		public void setDatabase(String database) {
+			this.database = database;
+		}
+
+		public String getBucket() {
+			return this.bucket;
+		}
+
+		public void setBucket(String bucket) {
+			this.bucket = bucket;
+		}
+
+	}
+
+	public static class Ssl {
+
+		/**
+		 * Whether to enable SSL support. Enabled automatically if "bundle" is provided
+		 * unless specified otherwise.
+		 */
+		private Boolean enabled;
+
+		/**
+		 * SSL bundle name.
+		 */
+		private String bundle;
+
+		public boolean isEnabled() {
+			return (this.enabled != null) ? this.enabled : this.bundle != null;
+		}
+
+		public void setEnabled(boolean enabled) {
+			this.enabled = enabled;
+		}
+
+		public String getBundle() {
+			return this.bundle;
+		}
+
+		public void setBundle(String bundle) {
+			this.bundle = bundle;
+		}
+
 	}
 
 }

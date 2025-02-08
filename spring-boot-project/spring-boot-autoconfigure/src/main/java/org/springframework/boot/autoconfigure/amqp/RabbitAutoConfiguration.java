@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,9 +16,9 @@
 
 package org.springframework.boot.autoconfigure.amqp;
 
-import java.time.Duration;
-
 import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.impl.CredentialsProvider;
+import com.rabbitmq.client.impl.CredentialsRefreshService;
 
 import org.springframework.amqp.core.AmqpAdmin;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
@@ -27,29 +27,29 @@ import org.springframework.amqp.rabbit.connection.ConnectionNameStrategy;
 import org.springframework.amqp.rabbit.connection.RabbitConnectionFactoryBean;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitMessagingTemplate;
+import org.springframework.amqp.rabbit.core.RabbitOperations;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnSingleCandidate;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.context.properties.PropertyMapper;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
-import org.springframework.retry.backoff.ExponentialBackOffPolicy;
-import org.springframework.retry.policy.SimpleRetryPolicy;
-import org.springframework.retry.support.RetryTemplate;
+import org.springframework.core.io.ResourceLoader;
 
 /**
  * {@link EnableAutoConfiguration Auto-configuration} for {@link RabbitTemplate}.
  * <p>
  * This configuration class is active only when the RabbitMQ and Spring AMQP client
  * libraries are on the classpath.
- * <P>
+ * <p>
  * Registers the following beans:
  * <ul>
  * <li>{@link org.springframework.amqp.rabbit.core.RabbitTemplate RabbitTemplate} if there
@@ -60,176 +60,127 @@ import org.springframework.retry.support.RetryTemplate;
  * <li>{@link org.springframework.amqp.core.AmqpAdmin } instance as long as
  * {@literal spring.rabbitmq.dynamic=true}.</li>
  * </ul>
- * <p>
- * The {@link org.springframework.amqp.rabbit.connection.CachingConnectionFactory} honors
- * the following properties:
- * <ul>
- * <li>{@literal spring.rabbitmq.port} is used to specify the port to which the client
- * should connect, and defaults to 5672.</li>
- * <li>{@literal spring.rabbitmq.username} is used to specify the (optional) username.
- * </li>
- * <li>{@literal spring.rabbitmq.password} is used to specify the (optional) password.
- * </li>
- * <li>{@literal spring.rabbitmq.host} is used to specify the host, and defaults to
- * {@literal localhost}.</li>
- * <li>{@literal spring.rabbitmq.virtualHost} is used to specify the (optional) virtual
- * host to which the client should connect.</li>
- * </ul>
  *
  * @author Greg Turnquist
  * @author Josh Long
  * @author Stephane Nicoll
  * @author Gary Russell
  * @author Phillip Webb
+ * @author Artsiom Yudovin
+ * @author Chris Bono
+ * @author Moritz Halbritter
+ * @author Andy Wilkinson
+ * @author Scott Frederick
+ * @since 1.0.0
  */
-@Configuration
+@AutoConfiguration
 @ConditionalOnClass({ RabbitTemplate.class, Channel.class })
 @EnableConfigurationProperties(RabbitProperties.class)
-@Import(RabbitAnnotationDrivenConfiguration.class)
+@Import({ RabbitAnnotationDrivenConfiguration.class, RabbitStreamConfiguration.class })
 public class RabbitAutoConfiguration {
 
-	@Configuration
-	@ConditionalOnMissingBean(ConnectionFactory.class)
+	@Configuration(proxyBeanMethods = false)
 	protected static class RabbitConnectionFactoryCreator {
 
-		@Bean
-		public CachingConnectionFactory rabbitConnectionFactory(
-				RabbitProperties properties,
-				ObjectProvider<ConnectionNameStrategy> connectionNameStrategy)
-				throws Exception {
-			PropertyMapper map = PropertyMapper.get();
-			CachingConnectionFactory factory = new CachingConnectionFactory(
-					getRabbitConnectionFactoryBean(properties).getObject());
-			map.from(properties::determineAddresses).to(factory::setAddresses);
-			map.from(properties::isPublisherConfirms).to(factory::setPublisherConfirms);
-			map.from(properties::isPublisherReturns).to(factory::setPublisherReturns);
-			RabbitProperties.Cache.Channel channel = properties.getCache().getChannel();
-			map.from(channel::getSize).whenNonNull().to(factory::setChannelCacheSize);
-			map.from(channel::getCheckoutTimeout).whenNonNull().as(Duration::toMillis)
-					.to(factory::setChannelCheckoutTimeout);
-			RabbitProperties.Cache.Connection connection = properties.getCache()
-					.getConnection();
-			map.from(connection::getMode).whenNonNull().to(factory::setCacheMode);
-			map.from(connection::getSize).whenNonNull()
-					.to(factory::setConnectionCacheSize);
-			map.from(connectionNameStrategy::getIfUnique).whenNonNull()
-					.to(factory::setConnectionNameStrategy);
-			return factory;
+		private final RabbitProperties properties;
+
+		protected RabbitConnectionFactoryCreator(RabbitProperties properties) {
+			this.properties = properties;
 		}
 
-		private RabbitConnectionFactoryBean getRabbitConnectionFactoryBean(
-				RabbitProperties properties) throws Exception {
-			PropertyMapper map = PropertyMapper.get();
-			RabbitConnectionFactoryBean factory = new RabbitConnectionFactoryBean();
-			map.from(properties::determineHost).whenNonNull().to(factory::setHost);
-			map.from(properties::determinePort).to(factory::setPort);
-			map.from(properties::determineUsername).whenNonNull()
-					.to(factory::setUsername);
-			map.from(properties::determinePassword).whenNonNull()
-					.to(factory::setPassword);
-			map.from(properties::determineVirtualHost).whenNonNull()
-					.to(factory::setVirtualHost);
-			map.from(properties::getRequestedHeartbeat).whenNonNull()
-					.asInt(Duration::getSeconds).to(factory::setRequestedHeartbeat);
-			RabbitProperties.Ssl ssl = properties.getSsl();
-			if (ssl.isEnabled()) {
-				factory.setUseSSL(true);
-				map.from(ssl::getAlgorithm).whenNonNull().to(factory::setSslAlgorithm);
-				map.from(ssl::getKeyStoreType).to(factory::setKeyStoreType);
-				map.from(ssl::getKeyStore).to(factory::setKeyStore);
-				map.from(ssl::getKeyStorePassword).to(factory::setKeyStorePassphrase);
-				map.from(ssl::getTrustStoreType).to(factory::setTrustStoreType);
-				map.from(ssl::getTrustStore).to(factory::setTrustStore);
-				map.from(ssl::getTrustStorePassword).to(factory::setTrustStorePassphrase);
-			}
-			map.from(properties::getConnectionTimeout).whenNonNull()
-					.asInt(Duration::toMillis).to(factory::setConnectionTimeout);
-			factory.afterPropertiesSet();
+		@Bean
+		@ConditionalOnMissingBean
+		RabbitConnectionDetails rabbitConnectionDetails() {
+			return new PropertiesRabbitConnectionDetails(this.properties);
+		}
+
+		@Bean
+		@ConditionalOnMissingBean
+		RabbitConnectionFactoryBeanConfigurer rabbitConnectionFactoryBeanConfigurer(ResourceLoader resourceLoader,
+				RabbitConnectionDetails connectionDetails, ObjectProvider<CredentialsProvider> credentialsProvider,
+				ObjectProvider<CredentialsRefreshService> credentialsRefreshService,
+				ObjectProvider<SslBundles> sslBundles) {
+			RabbitConnectionFactoryBeanConfigurer configurer = new RabbitConnectionFactoryBeanConfigurer(resourceLoader,
+					this.properties, connectionDetails, sslBundles.getIfAvailable());
+			configurer.setCredentialsProvider(credentialsProvider.getIfUnique());
+			configurer.setCredentialsRefreshService(credentialsRefreshService.getIfUnique());
+			return configurer;
+		}
+
+		@Bean
+		@ConditionalOnMissingBean
+		CachingConnectionFactoryConfigurer rabbitConnectionFactoryConfigurer(RabbitConnectionDetails connectionDetails,
+				ObjectProvider<ConnectionNameStrategy> connectionNameStrategy) {
+			CachingConnectionFactoryConfigurer configurer = new CachingConnectionFactoryConfigurer(this.properties,
+					connectionDetails);
+			configurer.setConnectionNameStrategy(connectionNameStrategy.getIfUnique());
+			return configurer;
+		}
+
+		@Bean
+		@ConditionalOnMissingBean(ConnectionFactory.class)
+		CachingConnectionFactory rabbitConnectionFactory(
+				RabbitConnectionFactoryBeanConfigurer rabbitConnectionFactoryBeanConfigurer,
+				CachingConnectionFactoryConfigurer rabbitCachingConnectionFactoryConfigurer,
+				ObjectProvider<ConnectionFactoryCustomizer> connectionFactoryCustomizers) throws Exception {
+			RabbitConnectionFactoryBean connectionFactoryBean = new SslBundleRabbitConnectionFactoryBean();
+			rabbitConnectionFactoryBeanConfigurer.configure(connectionFactoryBean);
+			connectionFactoryBean.afterPropertiesSet();
+			com.rabbitmq.client.ConnectionFactory connectionFactory = connectionFactoryBean.getObject();
+			connectionFactoryCustomizers.orderedStream()
+				.forEach((customizer) -> customizer.customize(connectionFactory));
+			CachingConnectionFactory factory = new CachingConnectionFactory(connectionFactory);
+			rabbitCachingConnectionFactoryConfigurer.configure(factory);
 			return factory;
 		}
 
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	@Import(RabbitConnectionFactoryCreator.class)
 	protected static class RabbitTemplateConfiguration {
 
-		private final ObjectProvider<MessageConverter> messageConverter;
-
-		private final RabbitProperties properties;
-
-		public RabbitTemplateConfiguration(
+		@Bean
+		@ConditionalOnMissingBean
+		public RabbitTemplateConfigurer rabbitTemplateConfigurer(RabbitProperties properties,
 				ObjectProvider<MessageConverter> messageConverter,
-				RabbitProperties properties) {
-			this.messageConverter = messageConverter;
-			this.properties = properties;
+				ObjectProvider<RabbitRetryTemplateCustomizer> retryTemplateCustomizers) {
+			RabbitTemplateConfigurer configurer = new RabbitTemplateConfigurer(properties);
+			configurer.setMessageConverter(messageConverter.getIfUnique());
+			configurer.setRetryTemplateCustomizers(retryTemplateCustomizers.orderedStream().toList());
+			return configurer;
 		}
 
 		@Bean
 		@ConditionalOnSingleCandidate(ConnectionFactory.class)
-		@ConditionalOnMissingBean(RabbitTemplate.class)
-		public RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory) {
-			PropertyMapper map = PropertyMapper.get();
-			RabbitTemplate template = new RabbitTemplate(connectionFactory);
-			MessageConverter messageConverter = this.messageConverter.getIfUnique();
-			if (messageConverter != null) {
-				template.setMessageConverter(messageConverter);
-			}
-			template.setMandatory(determineMandatoryFlag());
-			RabbitProperties.Template properties = this.properties.getTemplate();
-			if (properties.getRetry().isEnabled()) {
-				template.setRetryTemplate(createRetryTemplate(properties.getRetry()));
-			}
-			map.from(properties::getReceiveTimeout).whenNonNull().as(Duration::toMillis)
-					.to(template::setReceiveTimeout);
-			map.from(properties::getReplyTimeout).whenNonNull().as(Duration::toMillis)
-					.to(template::setReplyTimeout);
-			map.from(properties::getExchange).to(template::setExchange);
-			map.from(properties::getRoutingKey).to(template::setRoutingKey);
-			return template;
-		}
-
-		private boolean determineMandatoryFlag() {
-			Boolean mandatory = this.properties.getTemplate().getMandatory();
-			return (mandatory != null ? mandatory : this.properties.isPublisherReturns());
-		}
-
-		private RetryTemplate createRetryTemplate(RabbitProperties.Retry properties) {
-			PropertyMapper map = PropertyMapper.get();
-			RetryTemplate template = new RetryTemplate();
-			SimpleRetryPolicy policy = new SimpleRetryPolicy();
-			map.from(properties::getMaxAttempts).to(policy::setMaxAttempts);
-			template.setRetryPolicy(policy);
-			ExponentialBackOffPolicy backOffPolicy = new ExponentialBackOffPolicy();
-			map.from(properties::getInitialInterval).whenNonNull().as(Duration::toMillis)
-					.to(backOffPolicy::setInitialInterval);
-			map.from(properties::getMultiplier).to(backOffPolicy::setMultiplier);
-			map.from(properties::getMaxInterval).whenNonNull().as(Duration::toMillis)
-					.to(backOffPolicy::setMaxInterval);
-			template.setBackOffPolicy(backOffPolicy);
+		@ConditionalOnMissingBean(RabbitOperations.class)
+		public RabbitTemplate rabbitTemplate(RabbitTemplateConfigurer configurer, ConnectionFactory connectionFactory,
+				ObjectProvider<RabbitTemplateCustomizer> customizers) {
+			RabbitTemplate template = new RabbitTemplate();
+			configurer.configure(template, connectionFactory);
+			customizers.orderedStream().forEach((customizer) -> customizer.customize(template));
 			return template;
 		}
 
 		@Bean
 		@ConditionalOnSingleCandidate(ConnectionFactory.class)
-		@ConditionalOnProperty(prefix = "spring.rabbitmq", name = "dynamic", matchIfMissing = true)
-		@ConditionalOnMissingBean(AmqpAdmin.class)
+		@ConditionalOnBooleanProperty(name = "spring.rabbitmq.dynamic", matchIfMissing = true)
+		@ConditionalOnMissingBean
 		public AmqpAdmin amqpAdmin(ConnectionFactory connectionFactory) {
 			return new RabbitAdmin(connectionFactory);
 		}
 
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	@ConditionalOnClass(RabbitMessagingTemplate.class)
 	@ConditionalOnMissingBean(RabbitMessagingTemplate.class)
 	@Import(RabbitTemplateConfiguration.class)
-	protected static class MessagingTemplateConfiguration {
+	protected static class RabbitMessagingTemplateConfiguration {
 
 		@Bean
 		@ConditionalOnSingleCandidate(RabbitTemplate.class)
-		public RabbitMessagingTemplate rabbitMessagingTemplate(
-				RabbitTemplate rabbitTemplate) {
+		public RabbitMessagingTemplate rabbitMessagingTemplate(RabbitTemplate rabbitTemplate) {
 			return new RabbitMessagingTemplate(rabbitTemplate);
 		}
 

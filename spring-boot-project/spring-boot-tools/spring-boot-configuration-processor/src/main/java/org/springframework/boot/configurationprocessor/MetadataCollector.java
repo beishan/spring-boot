@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,6 +20,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.annotation.processing.RoundEnvironment;
@@ -35,6 +36,7 @@ import org.springframework.boot.configurationprocessor.metadata.ItemMetadata;
  *
  * @author Andy Wilkinson
  * @author Kris De Volder
+ * @author Moritz Halbritter
  * @since 1.2.2
  */
 public class MetadataCollector {
@@ -51,11 +53,10 @@ public class MetadataCollector {
 
 	/**
 	 * Creates a new {@code MetadataProcessor} instance.
-	 * @param processingEnvironment The processing environment of the build
-	 * @param previousMetadata Any previous metadata or {@code null}
+	 * @param processingEnvironment the processing environment of the build
+	 * @param previousMetadata any previous metadata or {@code null}
 	 */
-	public MetadataCollector(ProcessingEnvironment processingEnvironment,
-			ConfigurationMetadata previousMetadata) {
+	public MetadataCollector(ProcessingEnvironment processingEnvironment, ConfigurationMetadata previousMetadata) {
 		this.processingEnvironment = processingEnvironment;
 		this.previousMetadata = previousMetadata;
 		this.typeUtils = new TypeUtils(processingEnvironment);
@@ -77,13 +78,30 @@ public class MetadataCollector {
 		this.metadataItems.add(metadata);
 	}
 
+	public void add(ItemMetadata metadata, Consumer<ItemMetadata> onConflict) {
+		ItemMetadata existing = find(metadata.getName());
+		if (existing != null) {
+			onConflict.accept(existing);
+			return;
+		}
+		add(metadata);
+	}
+
+	public boolean addIfAbsent(ItemMetadata metadata) {
+		ItemMetadata existing = find(metadata.getName());
+		if (existing != null) {
+			return false;
+		}
+		add(metadata);
+		return true;
+	}
+
 	public boolean hasSimilarGroup(ItemMetadata metadata) {
 		if (!metadata.isOfItemType(ItemMetadata.ItemType.GROUP)) {
 			throw new IllegalStateException("item " + metadata + " must be a group");
 		}
 		for (ItemMetadata existing : this.metadataItems) {
-			if (existing.isOfItemType(ItemMetadata.ItemType.GROUP)
-					&& existing.getName().equals(metadata.getName())
+			if (existing.isOfItemType(ItemMetadata.ItemType.GROUP) && existing.getName().equals(metadata.getName())
 					&& existing.getType().equals(metadata.getType())) {
 				return true;
 			}
@@ -100,22 +118,27 @@ public class MetadataCollector {
 			List<ItemMetadata> items = this.previousMetadata.getItems();
 			for (ItemMetadata item : items) {
 				if (shouldBeMerged(item)) {
-					metadata.add(item);
+					metadata.addIfMissing(item);
 				}
 			}
 		}
 		return metadata;
 	}
 
+	private ItemMetadata find(String name) {
+		return this.metadataItems.stream()
+			.filter((candidate) -> name.equals(candidate.getName()))
+			.findFirst()
+			.orElse(null);
+	}
+
 	private boolean shouldBeMerged(ItemMetadata itemMetadata) {
 		String sourceType = itemMetadata.getSourceType();
-		return (sourceType != null && !deletedInCurrentBuild(sourceType)
-				&& !processedInCurrentBuild(sourceType));
+		return (sourceType != null && !deletedInCurrentBuild(sourceType) && !processedInCurrentBuild(sourceType));
 	}
 
 	private boolean deletedInCurrentBuild(String sourceType) {
-		return this.processingEnvironment.getElementUtils()
-				.getTypeElement(sourceType) == null;
+		return this.processingEnvironment.getElementUtils().getTypeElement(sourceType.replace('$', '.')) == null;
 	}
 
 	private boolean processedInCurrentBuild(String sourceType) {

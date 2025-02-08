@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -28,7 +28,10 @@ import org.springframework.test.context.MergedContextConfiguration;
  * A {@link ContextCustomizer} to add Mockito support.
  *
  * @author Phillip Webb
+ * @deprecated since 3.4.0 for removal in 3.6.0
  */
+@SuppressWarnings("removal")
+@Deprecated(since = "3.4.0", forRemoval = true)
 class MockitoContextCustomizer implements ContextCustomizer {
 
 	private final Set<Definition> definitions;
@@ -40,15 +43,9 @@ class MockitoContextCustomizer implements ContextCustomizer {
 	@Override
 	public void customizeContext(ConfigurableApplicationContext context,
 			MergedContextConfiguration mergedContextConfiguration) {
-		if (context instanceof BeanDefinitionRegistry) {
-			MockitoPostProcessor.register((BeanDefinitionRegistry) context,
-					this.definitions);
+		if (context instanceof BeanDefinitionRegistry registry) {
+			MockitoPostProcessor.register(registry, this.definitions);
 		}
-	}
-
-	@Override
-	public int hashCode() {
-		return this.definitions.hashCode();
 	}
 
 	@Override
@@ -61,6 +58,11 @@ class MockitoContextCustomizer implements ContextCustomizer {
 		}
 		MockitoContextCustomizer other = (MockitoContextCustomizer) obj;
 		return this.definitions.equals(other.definitions);
+	}
+
+	@Override
+	public int hashCode() {
+		return this.definitions.hashCode();
 	}
 
 }

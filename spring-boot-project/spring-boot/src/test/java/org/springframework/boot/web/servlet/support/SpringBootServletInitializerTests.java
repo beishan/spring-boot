@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,34 +16,51 @@
 
 package org.springframework.boot.web.servlet.support;
 
-import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumSet;
+import java.util.Map;
+import java.util.Vector;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.servlet.ServletContext;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterRegistration.Dynamic;
+import jakarta.servlet.ServletContext;
+import jakarta.servlet.ServletContextEvent;
+import jakarta.servlet.ServletContextListener;
+import jakarta.servlet.ServletException;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
-
-import org.springframework.beans.DirectFieldAccessor;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.context.event.ApplicationEnvironmentPreparedEvent;
+import org.springframework.boot.context.logging.LoggingApplicationListener;
+import org.springframework.boot.testsupport.system.CapturedOutput;
+import org.springframework.boot.testsupport.system.OutputCaptureExtension;
 import org.springframework.boot.web.embedded.undertow.UndertowServletWebServerFactory;
 import org.springframework.boot.web.server.WebServer;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.boot.web.servlet.server.ServletWebServerFactory;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.support.AbstractApplicationContext;
+import org.springframework.core.Ordered;
 import org.springframework.core.env.PropertySource;
 import org.springframework.mock.web.MockServletContext;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.context.support.StandardServletEnvironment;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -52,65 +69,69 @@ import static org.mockito.Mockito.mock;
  * @author Phillip Webb
  * @author Andy Wilkinson
  */
-public class SpringBootServletInitializerTests {
+@ExtendWith(OutputCaptureExtension.class)
+class SpringBootServletInitializerTests {
 
-	@Rule
-	public ExpectedException thrown = ExpectedException.none();
-
-	private ServletContext servletContext = new MockServletContext();
+	private final ServletContext servletContext = new MockServletContext();
 
 	private SpringApplication application;
 
-	@Test
-	public void failsWithoutConfigure() {
-		this.thrown.expect(IllegalStateException.class);
-		this.thrown.expectMessage("No SpringApplication sources have been defined");
-		new MockSpringBootServletInitializer()
-				.createRootApplicationContext(this.servletContext);
+	@AfterEach
+	void verifyLoggingOutput(CapturedOutput output) {
+		assertThat(output).doesNotContain(StandardServletEnvironment.class.getSimpleName());
 	}
 
 	@Test
-	public void withConfigurationAnnotation() {
-		new WithConfigurationAnnotation()
-				.createRootApplicationContext(this.servletContext);
-		assertThat(this.application.getAllSources()).containsOnly(
-				WithConfigurationAnnotation.class, ErrorPageFilterConfiguration.class);
+	void failsWithoutConfigure() {
+		assertThatIllegalStateException()
+			.isThrownBy(() -> new MockSpringBootServletInitializer().createRootApplicationContext(this.servletContext))
+			.withMessageContaining("No SpringApplication sources have been defined");
 	}
 
 	@Test
-	public void withConfiguredSource() {
-		new WithConfiguredSource().createRootApplicationContext(this.servletContext);
-		assertThat(this.application.getAllSources()).containsOnly(Config.class,
+	void withConfigurationAnnotation() {
+		new WithConfigurationAnnotation().createRootApplicationContext(this.servletContext);
+		assertThat(this.application.getAllSources()).containsOnly(WithConfigurationAnnotation.class,
 				ErrorPageFilterConfiguration.class);
 	}
 
 	@Test
-	public void applicationBuilderCanBeCustomized() {
+	void withConfiguredSource() {
+		new WithConfiguredSource().createRootApplicationContext(this.servletContext);
+		assertThat(this.application.getAllSources()).containsOnly(Config.class, ErrorPageFilterConfiguration.class);
+	}
+
+	@Test
+	void applicationBuilderCanBeCustomized() {
 		CustomSpringBootServletInitializer servletInitializer = new CustomSpringBootServletInitializer();
 		servletInitializer.createRootApplicationContext(this.servletContext);
 		assertThat(servletInitializer.applicationBuilder.built).isTrue();
 	}
 
 	@Test
-	@SuppressWarnings("rawtypes")
-	public void mainClassHasSensibleDefault() {
-		new WithConfigurationAnnotation()
-				.createRootApplicationContext(this.servletContext);
-		Class mainApplicationClass = (Class<?>) new DirectFieldAccessor(this.application)
-				.getPropertyValue("mainApplicationClass");
-		assertThat(mainApplicationClass).isEqualTo(WithConfigurationAnnotation.class);
+	void mainClassHasSensibleDefault() {
+		new WithConfigurationAnnotation().createRootApplicationContext(this.servletContext);
+		assertThat(this.application).hasFieldOrPropertyWithValue("mainApplicationClass",
+				WithConfigurationAnnotation.class);
 	}
 
 	@Test
-	public void errorPageFilterRegistrationCanBeDisabled() {
-		WebServer webServer = new UndertowServletWebServerFactory(0)
-				.getWebServer((servletContext) -> {
-					try (AbstractApplicationContext context = (AbstractApplicationContext) new WithErrorPageFilterNotRegistered()
-							.createRootApplicationContext(servletContext)) {
-						assertThat(context.getBeansOfType(ErrorPageFilter.class))
-								.hasSize(0);
-					}
-				});
+	void shutdownHooksAreNotRegistered() throws ServletException {
+		new WithConfigurationAnnotation().onStartup(this.servletContext);
+		assertThat(this.servletContext.getAttribute(LoggingApplicationListener.REGISTER_SHUTDOWN_HOOK_PROPERTY))
+			.isEqualTo(false);
+		Object properties = ReflectionTestUtils.getField(this.application, "properties");
+		assertThat(properties).hasFieldOrPropertyWithValue("registerShutdownHook", false);
+	}
+
+	@Test
+	void errorPageFilterRegistrationCanBeDisabled() {
+		WebServer webServer = new UndertowServletWebServerFactory(0).getWebServer((servletContext) -> {
+			try (AbstractApplicationContext context = (AbstractApplicationContext) new WithErrorPageFilterNotRegistered()
+				.createRootApplicationContext(servletContext)) {
+				assertThat(context.getBeansOfType(ErrorPageFilter.class)).isEmpty();
+			}
+		});
 		try {
 			webServer.start();
 		}
@@ -120,41 +141,131 @@ public class SpringBootServletInitializerTests {
 	}
 
 	@Test
-	public void executableWarThatUsesServletInitializerDoesNotHaveErrorPageFilterConfigured() {
-		try (ConfigurableApplicationContext context = new SpringApplication(
-				ExecutableWar.class).run()) {
-			assertThat(context.getBeansOfType(ErrorPageFilter.class)).hasSize(0);
+	@SuppressWarnings("rawtypes")
+	void errorPageFilterIsRegisteredWithNearHighestPrecedence() {
+		WebServer webServer = new UndertowServletWebServerFactory(0).getWebServer((servletContext) -> {
+			try (AbstractApplicationContext context = (AbstractApplicationContext) new WithErrorPageFilter()
+				.createRootApplicationContext(servletContext)) {
+				Map<String, FilterRegistrationBean> registrations = context
+					.getBeansOfType(FilterRegistrationBean.class);
+				assertThat(registrations).hasSize(1);
+				FilterRegistrationBean errorPageFilterRegistration = registrations.get("errorPageFilterRegistration");
+				assertThat(errorPageFilterRegistration.getOrder()).isEqualTo(Ordered.HIGHEST_PRECEDENCE + 1);
+			}
+		});
+		try {
+			webServer.start();
+		}
+		finally {
+			webServer.stop();
 		}
 	}
 
 	@Test
-	public void servletContextPropertySourceIsAvailablePriorToRefresh() {
-		ServletContext servletContext = mock(ServletContext.class);
-		given(servletContext.getInitParameterNames()).willReturn(
-				Collections.enumeration(Arrays.asList("spring.profiles.active")));
-		given(servletContext.getInitParameter("spring.profiles.active"))
-				.willReturn("from-servlet-context");
-		given(servletContext.getAttributeNames())
-				.willReturn(Collections.enumeration(Collections.emptyList()));
-		try (ConfigurableApplicationContext context = (ConfigurableApplicationContext) new PropertySourceVerifyingSpringBootServletInitializer()
+	@SuppressWarnings("rawtypes")
+	void errorPageFilterIsRegisteredForRequestAndAsyncDispatch() {
+		WebServer webServer = new UndertowServletWebServerFactory(0).getWebServer((servletContext) -> {
+			try (AbstractApplicationContext context = (AbstractApplicationContext) new WithErrorPageFilter()
 				.createRootApplicationContext(servletContext)) {
-			assertThat(context.getEnvironment().getActiveProfiles())
-					.containsExactly("from-servlet-context");
+				Map<String, FilterRegistrationBean> registrations = context
+					.getBeansOfType(FilterRegistrationBean.class);
+				assertThat(registrations).hasSize(1);
+				FilterRegistrationBean errorPageFilterRegistration = registrations.get("errorPageFilterRegistration");
+				assertThat(errorPageFilterRegistration).hasFieldOrPropertyWithValue("dispatcherTypes",
+						EnumSet.of(DispatcherType.ASYNC, DispatcherType.REQUEST));
+			}
+		});
+		try {
+			webServer.start();
+		}
+		finally {
+			webServer.stop();
 		}
 	}
 
-	private static class PropertySourceVerifyingSpringBootServletInitializer
-			extends SpringBootServletInitializer {
+	@Test
+	void executableWarThatUsesServletInitializerDoesNotHaveErrorPageFilterConfigured() {
+		try (ConfigurableApplicationContext context = new SpringApplication(ExecutableWar.class).run()) {
+			assertThat(context.getBeansOfType(ErrorPageFilter.class)).isEmpty();
+		}
+	}
+
+	@Test
+	void servletContextPropertySourceIsAvailablePriorToRefresh() {
+		ServletContext servletContext = mock(ServletContext.class);
+		given(servletContext.addFilter(any(), any(Filter.class))).willReturn(mock(Dynamic.class));
+		given(servletContext.getInitParameterNames())
+			.willReturn(Collections.enumeration(Collections.singletonList("spring.profiles.active")));
+		given(servletContext.getInitParameter("spring.profiles.active")).willReturn("from-servlet-context");
+		given(servletContext.getAttributeNames()).willReturn(Collections.emptyEnumeration());
+		try (ConfigurableApplicationContext context = (ConfigurableApplicationContext) new PropertySourceVerifyingSpringBootServletInitializer()
+			.createRootApplicationContext(servletContext)) {
+			assertThat(context.getEnvironment().getActiveProfiles()).containsExactly("from-servlet-context");
+		}
+	}
+
+	@Test
+	void whenServletContextIsDestroyedThenJdbcDriversAreDeregistered() throws ServletException {
+		ServletContext servletContext = mock(ServletContext.class);
+		given(servletContext.addFilter(any(), any(Filter.class))).willReturn(mock(Dynamic.class));
+		given(servletContext.getInitParameterNames()).willReturn(new Vector<String>().elements());
+		given(servletContext.getAttributeNames()).willReturn(new Vector<String>().elements());
+		AtomicBoolean driversDeregistered = new AtomicBoolean();
+		new SpringBootServletInitializer() {
+
+			@Override
+			protected SpringApplicationBuilder configure(SpringApplicationBuilder builder) {
+				return builder.sources(Config.class);
+			}
+
+			@Override
+			protected void deregisterJdbcDrivers(ServletContext servletContext) {
+				driversDeregistered.set(true);
+			}
+
+		}.onStartup(servletContext);
+		ArgumentCaptor<ServletContextListener> captor = ArgumentCaptor.forClass(ServletContextListener.class);
+		then(servletContext).should().addListener(captor.capture());
+		captor.getValue().contextDestroyed(new ServletContextEvent(servletContext));
+		assertThat(driversDeregistered).isTrue();
+	}
+
+	@Test
+	void whenServletContextIsDestroyedThenReactorSchedulersAreShutDown() throws ServletException {
+		ServletContext servletContext = mock(ServletContext.class);
+		given(servletContext.addFilter(any(), any(Filter.class))).willReturn(mock(Dynamic.class));
+		given(servletContext.getInitParameterNames()).willReturn(new Vector<String>().elements());
+		given(servletContext.getAttributeNames()).willReturn(new Vector<String>().elements());
+		AtomicBoolean schedulersShutDown = new AtomicBoolean();
+		new SpringBootServletInitializer() {
+
+			@Override
+			protected SpringApplicationBuilder configure(SpringApplicationBuilder builder) {
+				return builder.sources(Config.class);
+			}
+
+			@Override
+			protected void shutDownSharedReactorSchedulers(ServletContext servletContext) {
+				schedulersShutDown.set(true);
+			}
+
+		}.onStartup(servletContext);
+		ArgumentCaptor<ServletContextListener> captor = ArgumentCaptor.forClass(ServletContextListener.class);
+		then(servletContext).should().addListener(captor.capture());
+		captor.getValue().contextDestroyed(new ServletContextEvent(servletContext));
+		assertThat(schedulersShutDown).isTrue();
+	}
+
+	static class PropertySourceVerifyingSpringBootServletInitializer extends SpringBootServletInitializer {
 
 		@Override
 		protected SpringApplicationBuilder configure(SpringApplicationBuilder builder) {
-			return builder.sources(TestApp.class)
-					.listeners(new PropertySourceVerifyingApplicationListener());
+			return builder.sources(TestApp.class).listeners(new PropertySourceVerifyingApplicationListener());
 		}
 
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	static class TestApp {
 
 	}
@@ -169,8 +280,7 @@ public class SpringBootServletInitializerTests {
 
 	}
 
-	private class CustomSpringBootServletInitializer
-			extends MockSpringBootServletInitializer {
+	private final class CustomSpringBootServletInitializer extends MockSpringBootServletInitializer {
 
 		private final CustomSpringApplicationBuilder applicationBuilder = new CustomSpringApplicationBuilder();
 
@@ -180,14 +290,13 @@ public class SpringBootServletInitializerTests {
 		}
 
 		@Override
-		protected SpringApplicationBuilder configure(
-				SpringApplicationBuilder application) {
+		protected SpringApplicationBuilder configure(SpringApplicationBuilder application) {
 			return application.sources(Config.class);
 		}
 
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	public class WithConfigurationAnnotation extends MockSpringBootServletInitializer {
 
 	}
@@ -195,39 +304,42 @@ public class SpringBootServletInitializerTests {
 	public class WithConfiguredSource extends MockSpringBootServletInitializer {
 
 		@Override
-		protected SpringApplicationBuilder configure(
-				SpringApplicationBuilder application) {
+		protected SpringApplicationBuilder configure(SpringApplicationBuilder application) {
 			return application.sources(Config.class);
 		}
 
 	}
 
-	@Configuration
-	public static class WithErrorPageFilterNotRegistered
-			extends SpringBootServletInitializer {
+	@Configuration(proxyBeanMethods = false)
+	static class WithErrorPageFilterNotRegistered extends SpringBootServletInitializer {
 
-		public WithErrorPageFilterNotRegistered() {
+		WithErrorPageFilterNotRegistered() {
 			setRegisterErrorPageFilter(false);
 		}
 
 	}
 
-	@Configuration
-	public static class ExecutableWar extends SpringBootServletInitializer {
+	@Configuration(proxyBeanMethods = false)
+	static class WithErrorPageFilter extends SpringBootServletInitializer {
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	static class ExecutableWar extends SpringBootServletInitializer {
 
 		@Bean
-		public ServletWebServerFactory webServerFactory() {
+		ServletWebServerFactory webServerFactory() {
 			return new UndertowServletWebServerFactory(0);
 		}
 
 	}
 
-	@Configuration
-	public static class Config {
+	@Configuration(proxyBeanMethods = false)
+	static class Config {
 
 	}
 
-	private static class CustomSpringApplicationBuilder extends SpringApplicationBuilder {
+	static class CustomSpringApplicationBuilder extends SpringApplicationBuilder {
 
 		private boolean built;
 
@@ -244,10 +356,10 @@ public class SpringBootServletInitializerTests {
 
 		@Override
 		public void onApplicationEvent(ApplicationEnvironmentPreparedEvent event) {
-			PropertySource<?> propertySource = event.getEnvironment().getPropertySources()
-					.get(StandardServletEnvironment.SERVLET_CONTEXT_PROPERTY_SOURCE_NAME);
-			assertThat(propertySource.getProperty("spring.profiles.active"))
-					.isEqualTo("from-servlet-context");
+			PropertySource<?> propertySource = event.getEnvironment()
+				.getPropertySources()
+				.get(StandardServletEnvironment.SERVLET_CONTEXT_PROPERTY_SOURCE_NAME);
+			assertThat(propertySource.getProperty("spring.profiles.active")).isEqualTo("from-servlet-context");
 		}
 
 	}

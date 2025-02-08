@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -36,10 +36,10 @@ import org.springframework.util.StringUtils;
  * {@link ApplicationContextInitializer} that sets {@link Environment} properties for the
  * ports that {@link WebServer} servers are actually listening on. The property
  * {@literal "local.server.port"} can be injected directly into tests using
- * {@link Value @Value} or obtained via the {@link Environment}.
+ * {@link Value @Value} or obtained through the {@link Environment}.
  * <p>
  * If the {@link WebServerInitializedEvent} has a
- * {@link WebServerApplicationContext#getServerNamespace() server namespace} , it will be
+ * {@link WebServerApplicationContext#getServerNamespace() server namespace}, it will be
  * used to construct the property name. For example, the "management" actuator context
  * will have the property name {@literal "local.management.port"}.
  * <p>
@@ -49,9 +49,10 @@ import org.springframework.util.StringUtils;
  * @author Phillip Webb
  * @since 2.0.0
  */
-public class ServerPortInfoApplicationContextInitializer
-		implements ApplicationContextInitializer<ConfigurableApplicationContext>,
-		ApplicationListener<WebServerInitializedEvent> {
+public class ServerPortInfoApplicationContextInitializer implements
+		ApplicationContextInitializer<ConfigurableApplicationContext>, ApplicationListener<WebServerInitializedEvent> {
+
+	private static final String PROPERTY_SOURCE_NAME = "server.ports";
 
 	@Override
 	public void initialize(ConfigurableApplicationContext applicationContext) {
@@ -61,20 +62,17 @@ public class ServerPortInfoApplicationContextInitializer
 	@Override
 	public void onApplicationEvent(WebServerInitializedEvent event) {
 		String propertyName = "local." + getName(event.getApplicationContext()) + ".port";
-		setPortProperty(event.getApplicationContext(), propertyName,
-				event.getWebServer().getPort());
+		setPortProperty(event.getApplicationContext(), propertyName, event.getWebServer().getPort());
 	}
 
 	private String getName(WebServerApplicationContext context) {
 		String name = context.getServerNamespace();
-		return (StringUtils.hasText(name) ? name : "server");
+		return StringUtils.hasText(name) ? name : "server";
 	}
 
-	private void setPortProperty(ApplicationContext context, String propertyName,
-			int port) {
-		if (context instanceof ConfigurableApplicationContext) {
-			setPortProperty(((ConfigurableApplicationContext) context).getEnvironment(),
-					propertyName, port);
+	private void setPortProperty(ApplicationContext context, String propertyName, int port) {
+		if (context instanceof ConfigurableApplicationContext configurableContext) {
+			setPortProperty(configurableContext.getEnvironment(), propertyName, port);
 		}
 		if (context.getParent() != null) {
 			setPortProperty(context.getParent(), propertyName, port);
@@ -82,12 +80,11 @@ public class ServerPortInfoApplicationContextInitializer
 	}
 
 	@SuppressWarnings("unchecked")
-	private void setPortProperty(ConfigurableEnvironment environment, String propertyName,
-			int port) {
+	private void setPortProperty(ConfigurableEnvironment environment, String propertyName, int port) {
 		MutablePropertySources sources = environment.getPropertySources();
-		PropertySource<?> source = sources.get("server.ports");
+		PropertySource<?> source = sources.get(PROPERTY_SOURCE_NAME);
 		if (source == null) {
-			source = new MapPropertySource("server.ports", new HashMap<>());
+			source = new MapPropertySource(PROPERTY_SOURCE_NAME, new HashMap<>());
 			sources.addFirst(source);
 		}
 		((Map<String, Object>) source.getSource()).put(propertyName, port);

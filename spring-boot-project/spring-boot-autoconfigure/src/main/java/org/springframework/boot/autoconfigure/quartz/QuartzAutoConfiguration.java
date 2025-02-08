@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,10 +16,8 @@
 
 package org.springframework.boot.autoconfigure.quartz;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.Executor;
 
 import javax.sql.DataSource;
 
@@ -29,20 +27,27 @@ import org.quartz.Scheduler;
 import org.quartz.Trigger;
 
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.boot.autoconfigure.AbstractDependsOnBeanFactoryPostProcessor;
-import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnSingleCandidate;
+import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration;
 import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
+import org.springframework.boot.autoconfigure.liquibase.LiquibaseAutoConfiguration;
 import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration;
+import org.springframework.boot.autoconfigure.sql.init.OnDatabaseInitializationCondition;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.sql.init.dependency.DatabaseInitializationDependencyConfigurer;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.ResourceLoader;
+import org.springframework.context.annotation.Import;
+import org.springframework.core.annotation.Order;
 import org.springframework.scheduling.quartz.SchedulerFactoryBean;
+import org.springframework.scheduling.quartz.SpringBeanJobFactory;
 import org.springframework.transaction.PlatformTransactionManager;
 
 /**
@@ -52,65 +57,35 @@ import org.springframework.transaction.PlatformTransactionManager;
  * @author Stephane Nicoll
  * @since 2.0.0
  */
-@Configuration
-@ConditionalOnClass({ Scheduler.class, SchedulerFactoryBean.class,
-		PlatformTransactionManager.class })
+@AutoConfiguration(after = { DataSourceAutoConfiguration.class, HibernateJpaAutoConfiguration.class,
+		LiquibaseAutoConfiguration.class, FlywayAutoConfiguration.class })
+@ConditionalOnClass({ Scheduler.class, SchedulerFactoryBean.class, PlatformTransactionManager.class })
 @EnableConfigurationProperties(QuartzProperties.class)
-@AutoConfigureAfter({ DataSourceAutoConfiguration.class,
-		HibernateJpaAutoConfiguration.class })
 public class QuartzAutoConfiguration {
-
-	private final QuartzProperties properties;
-
-	private final List<SchedulerFactoryBeanCustomizer> customizers;
-
-	private final Executor taskExecutor;
-
-	private final JobDetail[] jobDetails;
-
-	private final Map<String, Calendar> calendars;
-
-	private final Trigger[] triggers;
-
-	private final ApplicationContext applicationContext;
-
-	public QuartzAutoConfiguration(QuartzProperties properties,
-			ObjectProvider<List<SchedulerFactoryBeanCustomizer>> customizers,
-			ObjectProvider<Executor> taskExecutor, ObjectProvider<JobDetail[]> jobDetails,
-			ObjectProvider<Map<String, Calendar>> calendars,
-			ObjectProvider<Trigger[]> triggers, ApplicationContext applicationContext) {
-		this.properties = properties;
-		this.customizers = customizers.getIfAvailable();
-		this.taskExecutor = taskExecutor.getIfUnique();
-		this.jobDetails = jobDetails.getIfAvailable();
-		this.calendars = calendars.getIfAvailable();
-		this.triggers = triggers.getIfAvailable();
-		this.applicationContext = applicationContext;
-	}
 
 	@Bean
 	@ConditionalOnMissingBean
-	public SchedulerFactoryBean quartzScheduler() {
+	public SchedulerFactoryBean quartzScheduler(QuartzProperties properties,
+			ObjectProvider<SchedulerFactoryBeanCustomizer> customizers, ObjectProvider<JobDetail> jobDetails,
+			Map<String, Calendar> calendars, ObjectProvider<Trigger> triggers, ApplicationContext applicationContext) {
 		SchedulerFactoryBean schedulerFactoryBean = new SchedulerFactoryBean();
-		schedulerFactoryBean.setJobFactory(new AutowireCapableBeanJobFactory(
-				this.applicationContext.getAutowireCapableBeanFactory()));
-		if (!this.properties.getProperties().isEmpty()) {
-			schedulerFactoryBean
-					.setQuartzProperties(asProperties(this.properties.getProperties()));
+		SpringBeanJobFactory jobFactory = new SpringBeanJobFactory();
+		jobFactory.setApplicationContext(applicationContext);
+		schedulerFactoryBean.setJobFactory(jobFactory);
+		if (properties.getSchedulerName() != null) {
+			schedulerFactoryBean.setSchedulerName(properties.getSchedulerName());
 		}
-		if (this.taskExecutor != null) {
-			schedulerFactoryBean.setTaskExecutor(this.taskExecutor);
+		schedulerFactoryBean.setAutoStartup(properties.isAutoStartup());
+		schedulerFactoryBean.setStartupDelay((int) properties.getStartupDelay().getSeconds());
+		schedulerFactoryBean.setWaitForJobsToCompleteOnShutdown(properties.isWaitForJobsToCompleteOnShutdown());
+		schedulerFactoryBean.setOverwriteExistingJobs(properties.isOverwriteExistingJobs());
+		if (!properties.getProperties().isEmpty()) {
+			schedulerFactoryBean.setQuartzProperties(asProperties(properties.getProperties()));
 		}
-		if (this.jobDetails != null && this.jobDetails.length > 0) {
-			schedulerFactoryBean.setJobDetails(this.jobDetails);
-		}
-		if (this.calendars != null && !this.calendars.isEmpty()) {
-			schedulerFactoryBean.setCalendars(this.calendars);
-		}
-		if (this.triggers != null && this.triggers.length > 0) {
-			schedulerFactoryBean.setTriggers(this.triggers);
-		}
-		customize(schedulerFactoryBean);
+		schedulerFactoryBean.setJobDetails(jobDetails.orderedStream().toArray(JobDetail[]::new));
+		schedulerFactoryBean.setCalendars(calendars);
+		schedulerFactoryBean.setTriggers(triggers.orderedStream().toArray(Trigger[]::new));
+		customizers.orderedStream().forEach((customizer) -> customizer.customize(schedulerFactoryBean));
 		return schedulerFactoryBean;
 	}
 
@@ -120,54 +95,56 @@ public class QuartzAutoConfiguration {
 		return properties;
 	}
 
-	private void customize(SchedulerFactoryBean schedulerFactoryBean) {
-		if (this.customizers != null) {
-			for (SchedulerFactoryBeanCustomizer customizer : this.customizers) {
-				customizer.customize(schedulerFactoryBean);
-			}
-		}
-	}
-
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	@ConditionalOnSingleCandidate(DataSource.class)
+	@ConditionalOnProperty(name = "spring.quartz.job-store-type", havingValue = "jdbc")
+	@Import(DatabaseInitializationDependencyConfigurer.class)
 	protected static class JdbcStoreTypeConfiguration {
 
 		@Bean
-		public SchedulerFactoryBeanCustomizer dataSourceCustomizer(
-				QuartzProperties properties, DataSource dataSource,
-				ObjectProvider<PlatformTransactionManager> transactionManager) {
+		@Order(0)
+		public SchedulerFactoryBeanCustomizer dataSourceCustomizer(QuartzProperties properties, DataSource dataSource,
+				@QuartzDataSource ObjectProvider<DataSource> quartzDataSource,
+				ObjectProvider<PlatformTransactionManager> transactionManager,
+				@QuartzTransactionManager ObjectProvider<PlatformTransactionManager> quartzTransactionManager) {
 			return (schedulerFactoryBean) -> {
-				if (properties.getJobStoreType() == JobStoreType.JDBC) {
-					schedulerFactoryBean.setDataSource(dataSource);
-					PlatformTransactionManager txManager = transactionManager
-							.getIfUnique();
-					if (txManager != null) {
-						schedulerFactoryBean.setTransactionManager(txManager);
-					}
+				DataSource dataSourceToUse = getDataSource(dataSource, quartzDataSource);
+				schedulerFactoryBean.setDataSource(dataSourceToUse);
+				PlatformTransactionManager txManager = getTransactionManager(transactionManager,
+						quartzTransactionManager);
+				if (txManager != null) {
+					schedulerFactoryBean.setTransactionManager(txManager);
 				}
 			};
 		}
 
+		private DataSource getDataSource(DataSource dataSource, ObjectProvider<DataSource> quartzDataSource) {
+			DataSource dataSourceIfAvailable = quartzDataSource.getIfAvailable();
+			return (dataSourceIfAvailable != null) ? dataSourceIfAvailable : dataSource;
+		}
+
+		private PlatformTransactionManager getTransactionManager(
+				ObjectProvider<PlatformTransactionManager> transactionManager,
+				ObjectProvider<PlatformTransactionManager> quartzTransactionManager) {
+			PlatformTransactionManager transactionManagerIfAvailable = quartzTransactionManager.getIfAvailable();
+			return (transactionManagerIfAvailable != null) ? transactionManagerIfAvailable
+					: transactionManager.getIfUnique();
+		}
+
 		@Bean
 		@ConditionalOnMissingBean
-		public QuartzDataSourceInitializer quartzDataSourceInitializer(
-				DataSource dataSource, ResourceLoader resourceLoader,
+		@Conditional(OnQuartzDatasourceInitializationCondition.class)
+		public QuartzDataSourceScriptDatabaseInitializer quartzDataSourceScriptDatabaseInitializer(
+				DataSource dataSource, @QuartzDataSource ObjectProvider<DataSource> quartzDataSource,
 				QuartzProperties properties) {
-			return new QuartzDataSourceInitializer(dataSource, resourceLoader,
-					properties);
+			DataSource dataSourceToUse = getDataSource(dataSource, quartzDataSource);
+			return new QuartzDataSourceScriptDatabaseInitializer(dataSourceToUse, properties);
 		}
 
-		@Bean
-		public static DataSourceInitializerSchedulerDependencyPostProcessor dataSourceInitializerSchedulerDependencyPostProcessor() {
-			return new DataSourceInitializerSchedulerDependencyPostProcessor();
-		}
+		static class OnQuartzDatasourceInitializationCondition extends OnDatabaseInitializationCondition {
 
-		private static class DataSourceInitializerSchedulerDependencyPostProcessor
-				extends AbstractDependsOnBeanFactoryPostProcessor {
-
-			DataSourceInitializerSchedulerDependencyPostProcessor() {
-				super(Scheduler.class, SchedulerFactoryBean.class,
-						"quartzDataSourceInitializer");
+			OnQuartzDatasourceInitializationCondition() {
+				super("Quartz", "spring.quartz.jdbc.initialize-schema");
 			}
 
 		}

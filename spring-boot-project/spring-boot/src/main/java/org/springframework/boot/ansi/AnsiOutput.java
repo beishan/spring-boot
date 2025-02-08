@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,15 +16,20 @@
 
 package org.springframework.boot.ansi;
 
+import java.io.Console;
+import java.lang.reflect.Method;
 import java.util.Locale;
 
 import org.springframework.util.Assert;
+import org.springframework.util.ClassUtils;
 
 /**
  * Generates ANSI encoded output, automatically attempting to detect if the terminal
  * supports ANSI.
  *
  * @author Phillip Webb
+ * @author Yong-Hyun Kim
+ * @since 1.0.0
  */
 public abstract class AnsiOutput {
 
@@ -36,8 +41,7 @@ public abstract class AnsiOutput {
 
 	private static Boolean ansiCapable;
 
-	private static final String OPERATING_SYSTEM_NAME = System.getProperty("os.name")
-			.toLowerCase(Locale.ENGLISH);
+	private static final String OPERATING_SYSTEM_NAME = System.getProperty("os.name").toLowerCase(Locale.ENGLISH);
 
 	private static final String ENCODE_START = "\033[";
 
@@ -50,8 +54,16 @@ public abstract class AnsiOutput {
 	 * @param enabled if ANSI is enabled, disabled or detected
 	 */
 	public static void setEnabled(Enabled enabled) {
-		Assert.notNull(enabled, "Enabled must not be null");
+		Assert.notNull(enabled, "'enabled' must not be null");
 		AnsiOutput.enabled = enabled;
+	}
+
+	/**
+	 * Returns if ANSI output is enabled
+	 * @return if ANSI enabled, disabled or detected
+	 */
+	public static Enabled getEnabled() {
+		return AnsiOutput.enabled;
 	}
 
 	/**
@@ -61,10 +73,6 @@ public abstract class AnsiOutput {
 	 */
 	public static void setConsoleAvailable(Boolean consoleAvailable) {
 		AnsiOutput.consoleAvailable = consoleAvailable;
-	}
-
-	static Enabled getEnabled() {
-		return AnsiOutput.enabled;
 	}
 
 	/**
@@ -148,8 +156,18 @@ public abstract class AnsiOutput {
 			if (Boolean.FALSE.equals(consoleAvailable)) {
 				return false;
 			}
-			if ((consoleAvailable == null) && (System.console() == null)) {
-				return false;
+			if (consoleAvailable == null) {
+				Console console = System.console();
+				if (console == null) {
+					return false;
+				}
+				Method isTerminalMethod = ClassUtils.getMethodIfAvailable(Console.class, "isTerminal");
+				if (isTerminalMethod != null) {
+					Boolean isTerminal = (Boolean) isTerminalMethod.invoke(console);
+					if (Boolean.FALSE.equals(isTerminal)) {
+						return false;
+					}
+				}
 			}
 			return !(OPERATING_SYSTEM_NAME.contains("win"));
 		}

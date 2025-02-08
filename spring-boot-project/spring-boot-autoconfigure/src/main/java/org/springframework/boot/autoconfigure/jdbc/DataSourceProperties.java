@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,9 +16,7 @@
 
 package org.springframework.boot.autoconfigure.jdbc;
 
-import java.nio.charset.Charset;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -29,7 +27,6 @@ import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.jdbc.DataSourceBuilder;
-import org.springframework.boot.jdbc.DataSourceInitializationMode;
 import org.springframework.boot.jdbc.DatabaseDriver;
 import org.springframework.boot.jdbc.EmbeddedDatabaseConnection;
 import org.springframework.util.Assert;
@@ -44,26 +41,28 @@ import org.springframework.util.StringUtils;
  * @author Stephane Nicoll
  * @author Benedikt Ritter
  * @author Eddú Meléndez
+ * @author Scott Frederick
  * @since 1.1.0
  */
-@ConfigurationProperties(prefix = "spring.datasource")
+@ConfigurationProperties("spring.datasource")
 public class DataSourceProperties implements BeanClassLoaderAware, InitializingBean {
 
 	private ClassLoader classLoader;
 
 	/**
-	 * Name of the datasource. Default to "testdb" when using an embedded database.
+	 * Whether to generate a random datasource name.
+	 */
+	private boolean generateUniqueName = true;
+
+	/**
+	 * Datasource name to use if "generate-unique-name" is false. Defaults to "testdb"
+	 * when using an embedded database, otherwise null.
 	 */
 	private String name;
 
 	/**
-	 * Whether to generate a random datasource name.
-	 */
-	private boolean generateUniqueName;
-
-	/**
-	 * Fully qualified name of the connection pool implementation to use. By default, it
-	 * is auto-detected from the classpath.
+	 * Fully qualified name of the DataSource implementation to use. By default, a
+	 * connection pool implementation is auto-detected from the classpath.
 	 */
 	private Class<? extends DataSource> type;
 
@@ -88,68 +87,16 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 	private String password;
 
 	/**
-	 * JNDI location of the datasource. Class, url, username & password are ignored when
+	 * JNDI location of the datasource. Class, url, username and password are ignored when
 	 * set.
 	 */
 	private String jndiName;
 
 	/**
-	 * Initialize the datasource with available DDL and DML scripts.
+	 * Connection details for an embedded database. Defaults to the most suitable embedded
+	 * database that is available on the classpath.
 	 */
-	private DataSourceInitializationMode initializationMode = DataSourceInitializationMode.EMBEDDED;
-
-	/**
-	 * Platform to use in the DDL or DML scripts (such as schema-${platform}.sql or
-	 * data-${platform}.sql).
-	 */
-	private String platform = "all";
-
-	/**
-	 * Schema (DDL) script resource references.
-	 */
-	private List<String> schema;
-
-	/**
-	 * Username of the database to execute DDL scripts (if different).
-	 */
-	private String schemaUsername;
-
-	/**
-	 * Password of the database to execute DDL scripts (if different).
-	 */
-	private String schemaPassword;
-
-	/**
-	 * Data (DML) script resource references.
-	 */
-	private List<String> data;
-
-	/**
-	 * Username of the database to execute DML scripts (if different).
-	 */
-	private String dataUsername;
-
-	/**
-	 * Password of the database to execute DML scripts (if different).
-	 */
-	private String dataPassword;
-
-	/**
-	 * Whether to stop if an error occurs while initializing the database.
-	 */
-	private boolean continueOnError = false;
-
-	/**
-	 * Statement separator in SQL initialization scripts.
-	 */
-	private String separator = ";";
-
-	/**
-	 * SQL scripts encoding.
-	 */
-	private Charset sqlScriptEncoding;
-
-	private EmbeddedDatabaseConnection embeddedDatabaseConnection = EmbeddedDatabaseConnection.NONE;
+	private EmbeddedDatabaseConnection embeddedDatabaseConnection;
 
 	private Xa xa = new Xa();
 
@@ -162,8 +109,9 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 
 	@Override
 	public void afterPropertiesSet() throws Exception {
-		this.embeddedDatabaseConnection = EmbeddedDatabaseConnection
-				.get(this.classLoader);
+		if (this.embeddedDatabaseConnection == null) {
+			this.embeddedDatabaseConnection = EmbeddedDatabaseConnection.get(this.classLoader);
+		}
 	}
 
 	/**
@@ -172,17 +120,12 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 	 * this instance
 	 */
 	public DataSourceBuilder<?> initializeDataSourceBuilder() {
-		return DataSourceBuilder.create(getClassLoader()).type(getType())
-				.driverClassName(determineDriverClassName()).url(determineUrl())
-				.username(determineUsername()).password(determinePassword());
-	}
-
-	public String getName() {
-		return this.name;
-	}
-
-	public void setName(String name) {
-		this.name = name;
+		return DataSourceBuilder.create(getClassLoader())
+			.type(getType())
+			.driverClassName(determineDriverClassName())
+			.url(determineUrl())
+			.username(determineUsername())
+			.password(determinePassword());
 	}
 
 	public boolean isGenerateUniqueName() {
@@ -191,6 +134,14 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 
 	public void setGenerateUniqueName(boolean generateUniqueName) {
 		this.generateUniqueName = generateUniqueName;
+	}
+
+	public String getName() {
+		return this.name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
 	}
 
 	public Class<? extends DataSource> getType() {
@@ -221,8 +172,7 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 	 */
 	public String determineDriverClassName() {
 		if (StringUtils.hasText(this.driverClassName)) {
-			Assert.state(driverClassIsLoadable(),
-					() -> "Cannot load driver class: " + this.driverClassName);
+			Assert.state(driverClassIsLoadable(), () -> "Cannot load driver class: " + this.driverClassName);
 			return this.driverClassName;
 		}
 		String driverClassName = null;
@@ -233,8 +183,7 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 			driverClassName = this.embeddedDatabaseConnection.getDriverClassName();
 		}
 		if (!StringUtils.hasText(driverClassName)) {
-			throw new DataSourceBeanCreationException(
-					"Failed to determine a suitable driver class",
+			throw new DataSourceBeanCreationException("Failed to determine a suitable driver class", this,
 					this.embeddedDatabaseConnection);
 		}
 		return driverClassName;
@@ -277,11 +226,9 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 			return this.url;
 		}
 		String databaseName = determineDatabaseName();
-		String url = (databaseName == null ? null
-				: this.embeddedDatabaseConnection.getUrl(databaseName));
+		String url = (databaseName != null) ? this.embeddedDatabaseConnection.getUrl(databaseName) : null;
 		if (!StringUtils.hasText(url)) {
-			throw new DataSourceBeanCreationException(
-					"Failed to determine suitable jdbc url",
+			throw new DataSourceBeanCreationException("Failed to determine suitable jdbc url", this,
 					this.embeddedDatabaseConnection);
 		}
 		return url;
@@ -330,7 +277,7 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 		if (StringUtils.hasText(this.username)) {
 			return this.username;
 		}
-		if (EmbeddedDatabaseConnection.isEmbedded(determineDriverClassName())) {
+		if (EmbeddedDatabaseConnection.isEmbedded(determineDriverClassName(), determineUrl())) {
 			return "sa";
 		}
 		return null;
@@ -358,7 +305,7 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 		if (StringUtils.hasText(this.password)) {
 			return this.password;
 		}
-		if (EmbeddedDatabaseConnection.isEmbedded(determineDriverClassName())) {
+		if (EmbeddedDatabaseConnection.isEmbedded(determineDriverClassName(), determineUrl())) {
 			return "";
 		}
 		return null;
@@ -369,7 +316,7 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 	}
 
 	/**
-	 * Allows the DataSource to be managed by the container and obtained via JNDI. The
+	 * Allows the DataSource to be managed by the container and obtained through JNDI. The
 	 * {@code URL}, {@code driverClassName}, {@code username} and {@code password} fields
 	 * will be ignored when using JNDI lookups.
 	 * @param jndiName the JNDI name
@@ -378,92 +325,12 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 		this.jndiName = jndiName;
 	}
 
-	public DataSourceInitializationMode getInitializationMode() {
-		return this.initializationMode;
+	public EmbeddedDatabaseConnection getEmbeddedDatabaseConnection() {
+		return this.embeddedDatabaseConnection;
 	}
 
-	public void setInitializationMode(DataSourceInitializationMode initializationMode) {
-		this.initializationMode = initializationMode;
-	}
-
-	public String getPlatform() {
-		return this.platform;
-	}
-
-	public void setPlatform(String platform) {
-		this.platform = platform;
-	}
-
-	public List<String> getSchema() {
-		return this.schema;
-	}
-
-	public void setSchema(List<String> schema) {
-		this.schema = schema;
-	}
-
-	public String getSchemaUsername() {
-		return this.schemaUsername;
-	}
-
-	public void setSchemaUsername(String schemaUsername) {
-		this.schemaUsername = schemaUsername;
-	}
-
-	public String getSchemaPassword() {
-		return this.schemaPassword;
-	}
-
-	public void setSchemaPassword(String schemaPassword) {
-		this.schemaPassword = schemaPassword;
-	}
-
-	public List<String> getData() {
-		return this.data;
-	}
-
-	public void setData(List<String> data) {
-		this.data = data;
-	}
-
-	public String getDataUsername() {
-		return this.dataUsername;
-	}
-
-	public void setDataUsername(String dataUsername) {
-		this.dataUsername = dataUsername;
-	}
-
-	public String getDataPassword() {
-		return this.dataPassword;
-	}
-
-	public void setDataPassword(String dataPassword) {
-		this.dataPassword = dataPassword;
-	}
-
-	public boolean isContinueOnError() {
-		return this.continueOnError;
-	}
-
-	public void setContinueOnError(boolean continueOnError) {
-		this.continueOnError = continueOnError;
-	}
-
-	public String getSeparator() {
-		return this.separator;
-	}
-
-	public void setSeparator(String separator) {
-		this.separator = separator;
-	}
-
-	public Charset getSqlScriptEncoding() {
-		return this.sqlScriptEncoding;
-	}
-
-	public void setSqlScriptEncoding(Charset sqlScriptEncoding) {
-		this.sqlScriptEncoding = sqlScriptEncoding;
+	public void setEmbeddedDatabaseConnection(EmbeddedDatabaseConnection embeddedDatabaseConnection) {
+		this.embeddedDatabaseConnection = embeddedDatabaseConnection;
 	}
 
 	public ClassLoader getClassLoader() {
@@ -513,15 +380,22 @@ public class DataSourceProperties implements BeanClassLoaderAware, InitializingB
 
 	static class DataSourceBeanCreationException extends BeanCreationException {
 
+		private final DataSourceProperties properties;
+
 		private final EmbeddedDatabaseConnection connection;
 
-		DataSourceBeanCreationException(String message,
+		DataSourceBeanCreationException(String message, DataSourceProperties properties,
 				EmbeddedDatabaseConnection connection) {
 			super(message);
+			this.properties = properties;
 			this.connection = connection;
 		}
 
-		public EmbeddedDatabaseConnection getConnection() {
+		DataSourceProperties getProperties() {
+			return this.properties;
+		}
+
+		EmbeddedDatabaseConnection getConnection() {
 			return this.connection;
 		}
 

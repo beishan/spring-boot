@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,13 +23,15 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Indicates that a getter in a {@link ConfigurationProperties} object is deprecated. This
- * annotation has no bearing on the actual binding processes, but it is used by the
- * {@code spring-boot-configuration-processor} to add deprecation meta-data.
+ * Indicates that a getter in a {@link ConfigurationProperties @ConfigurationProperties}
+ * object is deprecated. This annotation has no bearing on the actual binding processes,
+ * but it is used by the {@code spring-boot-configuration-processor} to add deprecation
+ * meta-data.
  * <p>
  * This annotation <strong>must</strong> be used on the getter of the deprecated element.
  *
  * @author Phillip Webb
+ * @author Scott Frederick
  * @since 1.3.0
  */
 @Target(ElementType.METHOD)
@@ -48,5 +50,11 @@ public @interface DeprecatedConfigurationProperty {
 	 * @return the replacement field
 	 */
 	String replacement() default "";
+
+	/**
+	 * The version in which the property became deprecated.
+	 * @return the version
+	 */
+	String since() default "";
 
 }

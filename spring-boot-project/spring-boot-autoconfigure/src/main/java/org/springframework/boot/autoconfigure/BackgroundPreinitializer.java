@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,52 +16,75 @@
 
 package org.springframework.boot.autoconfigure;
 
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.time.ZoneId;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.validation.Configuration;
-import javax.validation.Validation;
+import jakarta.validation.Configuration;
+import jakarta.validation.Validation;
+import org.apache.catalina.authenticator.NonLoginAuthenticator;
+import org.apache.tomcat.util.http.Rfc6265CookieProcessor;
 
-import org.apache.catalina.mbeans.MBeanFactory;
-
+import org.springframework.boot.context.event.ApplicationEnvironmentPreparedEvent;
 import org.springframework.boot.context.event.ApplicationFailedEvent;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.boot.context.event.ApplicationStartingEvent;
 import org.springframework.boot.context.event.SpringApplicationEvent;
 import org.springframework.boot.context.logging.LoggingApplicationListener;
 import org.springframework.context.ApplicationListener;
-import org.springframework.core.annotation.Order;
+import org.springframework.core.NativeDetector;
+import org.springframework.core.Ordered;
 import org.springframework.format.support.DefaultFormattingConversionService;
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder;
 import org.springframework.http.converter.support.AllEncompassingFormHttpMessageConverter;
 
 /**
  * {@link ApplicationListener} to trigger early initialization in a background thread of
- * time consuming tasks.
+ * time-consuming tasks.
+ * <p>
+ * Set the {@link #IGNORE_BACKGROUNDPREINITIALIZER_PROPERTY_NAME} system property to
+ * {@code true} to disable this mechanism and let such initialization happen in the
+ * foreground.
  *
  * @author Phillip Webb
  * @author Andy Wilkinson
+ * @author Artsiom Yudovin
+ * @author Sebastien Deleuze
  * @since 1.3.0
  */
-@Order(LoggingApplicationListener.DEFAULT_ORDER + 1)
-public class BackgroundPreinitializer
-		implements ApplicationListener<SpringApplicationEvent> {
+public class BackgroundPreinitializer implements ApplicationListener<SpringApplicationEvent>, Ordered {
 
-	private static final AtomicBoolean preinitializationStarted = new AtomicBoolean(
-			false);
+	/**
+	 * System property that instructs Spring Boot how to run pre initialization. When the
+	 * property is set to {@code true}, no pre-initialization happens and each item is
+	 * initialized in the foreground as it needs to. When the property is {@code false}
+	 * (default), pre initialization runs in a separate thread in the background.
+	 * @since 2.1.0
+	 */
+	public static final String IGNORE_BACKGROUNDPREINITIALIZER_PROPERTY_NAME = "spring.backgroundpreinitializer.ignore";
+
+	private static final AtomicBoolean preinitializationStarted = new AtomicBoolean();
 
 	private static final CountDownLatch preinitializationComplete = new CountDownLatch(1);
 
+	private static final boolean ENABLED = !Boolean.getBoolean(IGNORE_BACKGROUNDPREINITIALIZER_PROPERTY_NAME)
+			&& Runtime.getRuntime().availableProcessors() > 1;
+
+	@Override
+	public int getOrder() {
+		return LoggingApplicationListener.DEFAULT_ORDER + 1;
+	}
+
 	@Override
 	public void onApplicationEvent(SpringApplicationEvent event) {
-		if (event instanceof ApplicationStartingEvent
+		if (!ENABLED || NativeDetector.inNativeImage()) {
+			return;
+		}
+		if (event instanceof ApplicationEnvironmentPreparedEvent
 				&& preinitializationStarted.compareAndSet(false, true)) {
 			performPreinitialization();
 		}
-		if ((event instanceof ApplicationReadyEvent
-				|| event instanceof ApplicationFailedEvent)
+		if ((event instanceof ApplicationReadyEvent || event instanceof ApplicationFailedEvent)
 				&& preinitializationStarted.get()) {
 			try {
 				preinitializationComplete.await();
@@ -80,19 +103,25 @@ public class BackgroundPreinitializer
 				public void run() {
 					runSafely(new ConversionServiceInitializer());
 					runSafely(new ValidationInitializer());
-					runSafely(new MessageConverterInitializer());
-					runSafely(new MBeanFactoryInitializer());
-					runSafely(new JacksonInitializer());
+					if (!runSafely(new MessageConverterInitializer())) {
+						// If the MessageConverterInitializer fails to run, we still might
+						// be able to
+						// initialize Jackson
+						runSafely(new JacksonInitializer());
+					}
 					runSafely(new CharsetInitializer());
+					runSafely(new TomcatInitializer());
+					runSafely(new JdkInitializer());
 					preinitializationComplete.countDown();
 				}
 
-				public void runSafely(Runnable runnable) {
+				boolean runSafely(Runnable runnable) {
 					try {
 						runnable.run();
+						return true;
 					}
 					catch (Throwable ex) {
-						// Ignore
+						return false;
 					}
 				}
 
@@ -110,7 +139,7 @@ public class BackgroundPreinitializer
 	/**
 	 * Early initializer for Spring MessageConverters.
 	 */
-	private static class MessageConverterInitializer implements Runnable {
+	private static final class MessageConverterInitializer implements Runnable {
 
 		@Override
 		public void run() {
@@ -120,21 +149,9 @@ public class BackgroundPreinitializer
 	}
 
 	/**
-	 * Early initializer to load Tomcat MBean XML.
+	 * Early initializer for jakarta.validation.
 	 */
-	private static class MBeanFactoryInitializer implements Runnable {
-
-		@Override
-		public void run() {
-			new MBeanFactory();
-		}
-
-	}
-
-	/**
-	 * Early initializer for javax.validation.
-	 */
-	private static class ValidationInitializer implements Runnable {
+	private static final class ValidationInitializer implements Runnable {
 
 		@Override
 		public void run() {
@@ -147,7 +164,7 @@ public class BackgroundPreinitializer
 	/**
 	 * Early initializer for Jackson.
 	 */
-	private static class JacksonInitializer implements Runnable {
+	private static final class JacksonInitializer implements Runnable {
 
 		@Override
 		public void run() {
@@ -159,7 +176,7 @@ public class BackgroundPreinitializer
 	/**
 	 * Early initializer for Spring's ConversionService.
 	 */
-	private static class ConversionServiceInitializer implements Runnable {
+	private static final class ConversionServiceInitializer implements Runnable {
 
 		@Override
 		public void run() {
@@ -168,12 +185,30 @@ public class BackgroundPreinitializer
 
 	}
 
-	private static class CharsetInitializer implements Runnable {
+	private static final class CharsetInitializer implements Runnable {
 
 		@Override
 		public void run() {
 			StandardCharsets.UTF_8.name();
-			Charset.availableCharsets();
+		}
+
+	}
+
+	private static final class TomcatInitializer implements Runnable {
+
+		@Override
+		public void run() {
+			new Rfc6265CookieProcessor();
+			new NonLoginAuthenticator();
+		}
+
+	}
+
+	private static final class JdkInitializer implements Runnable {
+
+		@Override
+		public void run() {
+			ZoneId.systemDefault();
 		}
 
 	}

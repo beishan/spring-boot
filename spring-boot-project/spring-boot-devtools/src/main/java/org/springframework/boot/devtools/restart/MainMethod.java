@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -35,13 +35,15 @@ class MainMethod {
 	}
 
 	MainMethod(Thread thread) {
-		Assert.notNull(thread, "Thread must not be null");
+		Assert.notNull(thread, "'thread' must not be null");
 		this.method = getMainMethod(thread);
 	}
 
 	private Method getMainMethod(Thread thread) {
-		for (StackTraceElement element : thread.getStackTrace()) {
-			if ("main".equals(element.getMethodName())) {
+		StackTraceElement[] stackTrace = thread.getStackTrace();
+		for (int i = stackTrace.length - 1; i >= 0; i--) {
+			StackTraceElement element = stackTrace[i];
+			if ("main".equals(element.getMethodName()) && !isLoaderClass(element.getClassName())) {
 				Method method = getMainMethod(element);
 				if (method != null) {
 					return method;
@@ -49,6 +51,10 @@ class MainMethod {
 			}
 		}
 		throw new IllegalStateException("Unable to find main method");
+	}
+
+	private boolean isLoaderClass(String className) {
+		return className.startsWith("org.springframework.boot.loader.");
 	}
 
 	private Method getMainMethod(StackTraceElement element) {
@@ -69,7 +75,7 @@ class MainMethod {
 	 * Returns the actual main method.
 	 * @return the main method
 	 */
-	public Method getMethod() {
+	Method getMethod() {
 		return this.method;
 	}
 
@@ -77,7 +83,7 @@ class MainMethod {
 	 * Return the name of the declaring class.
 	 * @return the declaring class name
 	 */
-	public String getDeclaringClassName() {
+	String getDeclaringClassName() {
 		return this.method.getDeclaringClass().getName();
 	}
 

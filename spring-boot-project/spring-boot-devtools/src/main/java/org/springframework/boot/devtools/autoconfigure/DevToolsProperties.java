@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -32,12 +32,12 @@ import org.springframework.util.StringUtils;
  * @author Stephane Nicoll
  * @since 1.3.0
  */
-@ConfigurationProperties(prefix = "spring.devtools")
+@ConfigurationProperties("spring.devtools")
 public class DevToolsProperties {
 
-	private Restart restart = new Restart();
+	private final Restart restart = new Restart();
 
-	private Livereload livereload = new Livereload();
+	private final Livereload livereload = new Livereload();
 
 	@NestedConfigurationProperty
 	private final RemoteDevToolsProperties remote = new RemoteDevToolsProperties();
@@ -90,8 +90,9 @@ public class DevToolsProperties {
 		private Duration quietPeriod = Duration.ofMillis(400);
 
 		/**
-		 * Name of a specific file that, when changed, triggers the restart check. If not
-		 * specified, any classpath file change triggers the restart.
+		 * Name of a specific file that, when changed, triggers the restart check. Must be
+		 * a simple name (without any path) of a file that appears on your classpath. If
+		 * not specified, any classpath file change triggers the restart.
 		 */
 		private String triggerFile;
 
@@ -119,8 +120,7 @@ public class DevToolsProperties {
 				allExclude.addAll(StringUtils.commaDelimitedListToSet(this.exclude));
 			}
 			if (StringUtils.hasText(this.additionalExclude)) {
-				allExclude.addAll(
-						StringUtils.commaDelimitedListToSet(this.additionalExclude));
+				allExclude.addAll(StringUtils.commaDelimitedListToSet(this.additionalExclude));
 			}
 			return StringUtils.toStringArray(allExclude);
 		}

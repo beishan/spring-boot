@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,12 +18,10 @@ package org.springframework.boot.actuate.autoconfigure.web.server;
 
 import java.net.InetAddress;
 
-import org.springframework.boot.autoconfigure.security.SecurityPrerequisite;
 import org.springframework.boot.autoconfigure.web.ServerProperties;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
 import org.springframework.boot.web.server.Ssl;
-import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 /**
@@ -36,7 +34,7 @@ import org.springframework.util.StringUtils;
  * @see ServerProperties
  */
 @ConfigurationProperties(prefix = "management.server", ignoreUnknownFields = true)
-public class ManagementServerProperties implements SecurityPrerequisite {
+public class ManagementServerProperties {
 
 	/**
 	 * Management endpoint HTTP port (uses the same port as the application by default).
@@ -50,15 +48,16 @@ public class ManagementServerProperties implements SecurityPrerequisite {
 	 */
 	private InetAddress address;
 
-	private final Servlet servlet = new Servlet();
+	/**
+	 * Management endpoint base path (for instance, '/management'). Requires a custom
+	 * management.server.port.
+	 */
+	private String basePath = "";
 
 	@NestedConfigurationProperty
 	private Ssl ssl;
 
-	/**
-	 * Add the "X-Application-Context" HTTP header in each response.
-	 */
-	private boolean addApplicationContextHeader = false;
+	private final Accesslog accesslog = new Accesslog();
 
 	/**
 	 * Returns the management port or {@code null} if the
@@ -72,7 +71,8 @@ public class ManagementServerProperties implements SecurityPrerequisite {
 
 	/**
 	 * Sets the port of the management server, use {@code null} if the
-	 * {@link ServerProperties#getPort() server port} should be used. To disable use 0.
+	 * {@link ServerProperties#getPort() server port} should be used. Set to 0 to use a
+	 * random port or set to -1 to disable.
 	 * @param port the port
 	 */
 	public void setPort(Integer port) {
@@ -87,6 +87,14 @@ public class ManagementServerProperties implements SecurityPrerequisite {
 		this.address = address;
 	}
 
+	public String getBasePath() {
+		return this.basePath;
+	}
+
+	public void setBasePath(String basePath) {
+		this.basePath = cleanBasePath(basePath);
+	}
+
 	public Ssl getSsl() {
 		return this.ssl;
 	}
@@ -95,48 +103,39 @@ public class ManagementServerProperties implements SecurityPrerequisite {
 		this.ssl = ssl;
 	}
 
-	public Servlet getServlet() {
-		return this.servlet;
-	}
-
-	public boolean getAddApplicationContextHeader() {
-		return this.addApplicationContextHeader;
-	}
-
-	public void setAddApplicationContextHeader(boolean addApplicationContextHeader) {
-		this.addApplicationContextHeader = addApplicationContextHeader;
-	}
-
-	/**
-	 * Servlet properties.
-	 */
-	public static class Servlet {
-
-		/**
-		 * Management endpoint context-path (for instance, `/management`). Requires a
-		 * custom management.server.port.
-		 */
-		private String contextPath = "";
-
-		/**
-		 * Return the context path with no trailing slash (i.e. the '/' root context is
-		 * represented as the empty string).
-		 * @return the context path (no trailing slash)
-		 */
-		public String getContextPath() {
-			return this.contextPath;
+	private String cleanBasePath(String basePath) {
+		String candidate = null;
+		if (StringUtils.hasLength(basePath)) {
+			candidate = basePath.strip();
 		}
-
-		public void setContextPath(String contextPath) {
-			Assert.notNull(contextPath, "ContextPath must not be null");
-			this.contextPath = cleanContextPath(contextPath);
-		}
-
-		private String cleanContextPath(String contextPath) {
-			if (StringUtils.hasText(contextPath) && contextPath.endsWith("/")) {
-				return contextPath.substring(0, contextPath.length() - 1);
+		if (StringUtils.hasText(candidate)) {
+			if (!candidate.startsWith("/")) {
+				candidate = "/" + candidate;
 			}
-			return contextPath;
+			if (candidate.endsWith("/")) {
+				candidate = candidate.substring(0, candidate.length() - 1);
+			}
+		}
+		return candidate;
+	}
+
+	public Accesslog getAccesslog() {
+		return this.accesslog;
+	}
+
+	public static class Accesslog {
+
+		/**
+		 * Management log file name prefix.
+		 */
+		private String prefix = "management_";
+
+		public String getPrefix() {
+			return this.prefix;
+		}
+
+		public void setPrefix(String prefix) {
+			this.prefix = prefix;
 		}
 
 	}

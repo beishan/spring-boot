@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,8 +16,8 @@
 
 package org.springframework.boot.web.servlet;
 
-import javax.servlet.Filter;
-import javax.servlet.ServletContext;
+import jakarta.servlet.Filter;
+import jakarta.servlet.ServletContext;
 
 import org.springframework.util.Assert;
 
@@ -29,9 +29,9 @@ import org.springframework.util.Assert;
  * The {@link #setFilter(Filter) Filter} must be specified before calling
  * {@link #onStartup(ServletContext)}. Registrations can be associated with
  * {@link #setUrlPatterns URL patterns} and/or servlets (either by {@link #setServletNames
- * name} or via a {@link #setServletRegistrationBeans ServletRegistrationBean}s. When no
- * URL pattern or servlets are specified the filter will be associated to '/*'. The filter
- * name will be deduced if not specified.
+ * name} or through a {@link #setServletRegistrationBeans ServletRegistrationBean}s). When
+ * no URL pattern or servlets are specified the filter will be associated to '/*'. The
+ * filter name will be deduced if not specified.
  *
  * @param <T> the type of {@link Filter} to register
  * @author Phillip Webb
@@ -40,13 +40,7 @@ import org.springframework.util.Assert;
  * @see ServletContext#addFilter(String, Filter)
  * @see DelegatingFilterProxyRegistrationBean
  */
-public class FilterRegistrationBean<T extends Filter>
-		extends AbstractFilterRegistrationBean<T> {
-
-	/**
-	 * Filters that wrap the servlet request should be ordered less than or equal to this.
-	 */
-	public static final int REQUEST_WRAPPER_FILTER_MAX_ORDER = AbstractFilterRegistrationBean.REQUEST_WRAPPER_FILTER_MAX_ORDER;
+public class FilterRegistrationBean<T extends Filter> extends AbstractFilterRegistrationBean<T> {
 
 	private T filter;
 
@@ -62,10 +56,9 @@ public class FilterRegistrationBean<T extends Filter>
 	 * @param filter the filter to register
 	 * @param servletRegistrationBeans associate {@link ServletRegistrationBean}s
 	 */
-	public FilterRegistrationBean(T filter,
-			ServletRegistrationBean<?>... servletRegistrationBeans) {
+	public FilterRegistrationBean(T filter, ServletRegistrationBean<?>... servletRegistrationBeans) {
 		super(servletRegistrationBeans);
-		Assert.notNull(filter, "Filter must not be null");
+		Assert.notNull(filter, "'filter' must not be null");
 		this.filter = filter;
 	}
 
@@ -79,7 +72,7 @@ public class FilterRegistrationBean<T extends Filter>
 	 * @param filter the filter
 	 */
 	public void setFilter(T filter) {
-		Assert.notNull(filter, "Filter must not be null");
+		Assert.notNull(filter, "'filter' must not be null");
 		this.filter = filter;
 	}
 

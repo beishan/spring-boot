@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,18 +16,18 @@
 
 package org.springframework.boot;
 
-import java.lang.management.ManagementFactory;
-import java.net.InetAddress;
 import java.util.concurrent.Callable;
 
 import org.apache.commons.logging.Log;
 
+import org.springframework.aot.AotDetector;
+import org.springframework.boot.SpringApplication.Startup;
 import org.springframework.boot.system.ApplicationHome;
-import org.springframework.boot.system.ApplicationPid;
 import org.springframework.context.ApplicationContext;
+import org.springframework.core.env.Environment;
+import org.springframework.core.log.LogMessage;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
-import org.springframework.util.StopWatch;
 import org.springframework.util.StringUtils;
 
 /**
@@ -35,117 +35,131 @@ import org.springframework.util.StringUtils;
  *
  * @author Phillip Webb
  * @author Dave Syer
+ * @author Moritz Halbritter
  */
 class StartupInfoLogger {
 
 	private final Class<?> sourceClass;
 
-	StartupInfoLogger(Class<?> sourceClass) {
+	private final Environment environment;
+
+	StartupInfoLogger(Class<?> sourceClass, Environment environment) {
 		this.sourceClass = sourceClass;
+		this.environment = environment;
 	}
 
-	public void logStarting(Log log) {
-		Assert.notNull(log, "Log must not be null");
-		if (log.isInfoEnabled()) {
-			log.info(getStartupMessage());
-		}
-		if (log.isDebugEnabled()) {
-			log.debug(getRunningMessage());
-		}
+	void logStarting(Log applicationLog) {
+		Assert.notNull(applicationLog, "'applicationLog' must not be null");
+		applicationLog.info(LogMessage.of(this::getStartingMessage));
+		applicationLog.debug(LogMessage.of(this::getRunningMessage));
 	}
 
-	public void logStarted(Log log, StopWatch stopWatch) {
-		if (log.isInfoEnabled()) {
-			log.info(getStartedMessage(stopWatch));
+	void logStarted(Log applicationLog, Startup startup) {
+		if (applicationLog.isInfoEnabled()) {
+			applicationLog.info(getStartedMessage(startup));
 		}
 	}
 
-	private String getStartupMessage() {
+	private CharSequence getStartingMessage() {
 		StringBuilder message = new StringBuilder();
-		message.append("Starting ");
-		message.append(getApplicationName());
-		message.append(getVersion(this.sourceClass));
-		message.append(getOn());
-		message.append(getPid());
-		message.append(getContext());
-		return message.toString();
+		message.append("Starting");
+		appendAotMode(message);
+		appendApplicationName(message);
+		appendApplicationVersion(message);
+		appendJavaVersion(message);
+		appendPid(message);
+		appendContext(message);
+		return message;
 	}
 
-	private StringBuilder getRunningMessage() {
+	private CharSequence getRunningMessage() {
 		StringBuilder message = new StringBuilder();
 		message.append("Running with Spring Boot");
-		message.append(getVersion(getClass()));
+		appendVersion(message, getClass());
 		message.append(", Spring");
-		message.append(getVersion(ApplicationContext.class));
+		appendVersion(message, ApplicationContext.class);
 		return message;
 	}
 
-	private StringBuilder getStartedMessage(StopWatch stopWatch) {
+	private CharSequence getStartedMessage(Startup startup) {
 		StringBuilder message = new StringBuilder();
-		message.append("Started ");
-		message.append(getApplicationName());
+		message.append(startup.action());
+		appendApplicationName(message);
 		message.append(" in ");
-		message.append(stopWatch.getTotalTimeSeconds());
-		try {
-			double uptime = ManagementFactory.getRuntimeMXBean().getUptime() / 1000.0;
-			message.append(" seconds (JVM running for " + uptime + ")");
-		}
-		catch (Throwable ex) {
-			// No JVM time available
+		message.append(startup.timeTakenToStarted().toMillis() / 1000.0);
+		message.append(" seconds");
+		Long uptimeMs = startup.processUptime();
+		if (uptimeMs != null) {
+			double uptime = uptimeMs / 1000.0;
+			message.append(" (process running for ").append(uptime).append(")");
 		}
 		return message;
 	}
 
-	private String getApplicationName() {
-		return (this.sourceClass != null ? ClassUtils.getShortName(this.sourceClass)
-				: "application");
+	private void appendAotMode(StringBuilder message) {
+		append(message, "", () -> AotDetector.useGeneratedArtifacts() ? "AOT-processed" : null);
 	}
 
-	private String getVersion(Class<?> source) {
-		return getValue(" v", () -> source.getPackage().getImplementationVersion(), "");
+	private void appendApplicationName(StringBuilder message) {
+		append(message, "",
+				() -> (this.sourceClass != null) ? ClassUtils.getShortName(this.sourceClass) : "application");
 	}
 
-	private String getOn() {
-		return getValue(" on ", () -> InetAddress.getLocalHost().getHostName());
+	private void appendVersion(StringBuilder message, Class<?> source) {
+		append(message, "v", () -> source.getPackage().getImplementationVersion());
 	}
 
-	private String getPid() {
-		return getValue(" with PID ", () -> new ApplicationPid().toString());
+	private void appendApplicationVersion(StringBuilder message) {
+		append(message, "v", () -> this.environment.getProperty("spring.application.version"));
 	}
 
-	private String getContext() {
-		String startedBy = getValue("started by ", () -> System.getProperty("user.name"));
-		String in = getValue("in ", () -> System.getProperty("user.dir"));
+	private void appendPid(StringBuilder message) {
+		append(message, "with PID ", () -> this.environment.getProperty("spring.application.pid"));
+	}
+
+	private void appendContext(StringBuilder message) {
+		StringBuilder context = new StringBuilder();
 		ApplicationHome home = new ApplicationHome(this.sourceClass);
-		String path = (home.getSource() == null ? ""
-				: home.getSource().getAbsolutePath());
-		if (startedBy == null && path == null) {
-			return "";
+		if (home.getSource() != null) {
+			context.append(home.getSource().getAbsolutePath());
 		}
-		if (StringUtils.hasLength(startedBy) && StringUtils.hasLength(path)) {
-			startedBy = " " + startedBy;
+		append(context, "started by ", () -> System.getProperty("user.name"));
+		append(context, "in ", () -> System.getProperty("user.dir"));
+		if (!context.isEmpty()) {
+			message.append(" (");
+			message.append(context);
+			message.append(")");
 		}
-		if (StringUtils.hasLength(in) && StringUtils.hasLength(startedBy)) {
-			in = " " + in;
-		}
-		return " (" + path + startedBy + in + ")";
 	}
 
-	private String getValue(String prefix, Callable<Object> call) {
-		return getValue(prefix, call, "");
+	private void appendJavaVersion(StringBuilder message) {
+		append(message, "using Java ", () -> System.getProperty("java.version"));
 	}
 
-	private String getValue(String prefix, Callable<Object> call, String defaultValue) {
+	private void append(StringBuilder message, String prefix, Callable<Object> call) {
+		append(message, prefix, call, "");
+	}
+
+	private void append(StringBuilder message, String prefix, Callable<Object> call, String defaultValue) {
+		Object result = callIfPossible(call);
+		String value = (result != null) ? result.toString() : null;
+		if (!StringUtils.hasLength(value)) {
+			value = defaultValue;
+		}
+		if (StringUtils.hasLength(value)) {
+			message.append((!message.isEmpty()) ? " " : "");
+			message.append(prefix);
+			message.append(value);
+		}
+	}
+
+	private Object callIfPossible(Callable<Object> call) {
 		try {
-			Object value = call.call();
-			if (value != null && StringUtils.hasLength(value.toString())) {
-				return prefix + value;
-			}
+			return call.call();
 		}
 		catch (Exception ex) {
-			// Swallow and continue
+			return null;
 		}
-		return defaultValue;
 	}
 
 }

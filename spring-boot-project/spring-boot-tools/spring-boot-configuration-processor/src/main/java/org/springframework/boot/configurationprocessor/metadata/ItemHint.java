@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,6 +21,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+
+import org.springframework.boot.configurationprocessor.support.ConventionUtils;
 
 /**
  * Provide hints on an {@link ItemMetadata}. Defines the list of possible values for a
@@ -44,9 +46,8 @@ public class ItemHint implements Comparable<ItemHint> {
 
 	public ItemHint(String name, List<ValueHint> values, List<ValueProvider> providers) {
 		this.name = toCanonicalName(name);
-		this.values = (values != null ? new ArrayList<>(values) : new ArrayList<>());
-		this.providers = (providers != null ? new ArrayList<>(providers)
-				: new ArrayList<>());
+		this.values = (values != null) ? new ArrayList<>(values) : new ArrayList<>();
+		this.providers = (providers != null) ? new ArrayList<>(providers) : new ArrayList<>();
 	}
 
 	private String toCanonicalName(String name) {
@@ -54,9 +55,9 @@ public class ItemHint implements Comparable<ItemHint> {
 		if (dot != -1) {
 			String prefix = name.substring(0, dot);
 			String originalName = name.substring(dot);
-			return prefix + ConfigurationMetadata.toDashedCase(originalName);
+			return prefix + ConventionUtils.toDashedCase(originalName);
 		}
-		return ConfigurationMetadata.toDashedCase(name);
+		return ConventionUtils.toDashedCase(name);
 	}
 
 	public String getName() {
@@ -82,8 +83,7 @@ public class ItemHint implements Comparable<ItemHint> {
 
 	@Override
 	public String toString() {
-		return "ItemHint{" + "name='" + this.name + "', values=" + this.values
-				+ ", providers=" + this.providers + '}';
+		return "ItemHint{name='" + this.name + "', values=" + this.values + ", providers=" + this.providers + '}';
 	}
 
 	/**
@@ -110,8 +110,7 @@ public class ItemHint implements Comparable<ItemHint> {
 
 		@Override
 		public String toString() {
-			return "ValueHint{" + "value=" + this.value + ", description='"
-					+ this.description + '\'' + '}';
+			return "ValueHint{value=" + this.value + ", description='" + this.description + '\'' + '}';
 		}
 
 	}
@@ -140,8 +139,7 @@ public class ItemHint implements Comparable<ItemHint> {
 
 		@Override
 		public String toString() {
-			return "ValueProvider{" + "name='" + this.name + "', parameters="
-					+ this.parameters + '}';
+			return "ValueProvider{name='" + this.name + "', parameters=" + this.parameters + '}';
 		}
 
 	}

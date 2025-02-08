@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,64 +18,75 @@ package org.springframework.boot.devtools.restart;
 
 import java.lang.reflect.Method;
 
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
+import org.springframework.boot.loader.launch.FakeJarLauncher;
 import org.springframework.util.ReflectionUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 /**
  * Tests for {@link MainMethod}.
  *
  * @author Phillip Webb
  */
-public class MainMethodTests {
+class MainMethodTests {
 
-	@Rule
-	public ExpectedException thrown = ExpectedException.none();
-
-	private static ThreadLocal<MainMethod> mainMethod = new ThreadLocal<>();
+	private static final ThreadLocal<MainMethod> mainMethod = new ThreadLocal<>();
 
 	private Method actualMain;
 
-	@Before
-	public void setup() throws Exception {
+	@BeforeEach
+	void setup() throws Exception {
 		this.actualMain = Valid.class.getMethod("main", String[].class);
 	}
 
 	@Test
-	public void threadMustNotBeNull() {
-		this.thrown.expect(IllegalArgumentException.class);
-		this.thrown.expectMessage("Thread must not be null");
-		new MainMethod(null);
+	void threadMustNotBeNull() {
+		assertThatIllegalArgumentException().isThrownBy(() -> new MainMethod(null))
+			.withMessageContaining("'thread' must not be null");
 	}
 
 	@Test
-	public void validMainMethod() throws Exception {
+	void validMainMethod() throws Exception {
 		MainMethod method = new TestThread(Valid::main).test();
 		assertThat(method.getMethod()).isEqualTo(this.actualMain);
-		assertThat(method.getDeclaringClassName())
-				.isEqualTo(this.actualMain.getDeclaringClass().getName());
+		assertThat(method.getDeclaringClassName()).isEqualTo(this.actualMain.getDeclaringClass().getName());
+	}
+
+	@Test // gh-35214
+	void nestedMainMethod() throws Exception {
+		MainMethod method = new TestThread(Nested::main).test();
+		Method nestedMain = Nested.class.getMethod("main", String[].class);
+		assertThat(method.getMethod()).isEqualTo(nestedMain);
+		assertThat(method.getDeclaringClassName()).isEqualTo(nestedMain.getDeclaringClass().getName());
+	}
+
+	@Test // gh-39733
+	void viaJarLauncher() throws Exception {
+		FakeJarLauncher.action = (args) -> Valid.main(args);
+		MainMethod method = new TestThread(FakeJarLauncher::main).test();
+		Method expectedMain = Valid.class.getMethod("main", String[].class);
+		assertThat(method.getMethod()).isEqualTo(expectedMain);
+		assertThat(method.getDeclaringClassName()).isEqualTo(expectedMain.getDeclaringClass().getName());
 	}
 
 	@Test
-	public void missingArgsMainMethod() throws Exception {
-		this.thrown.expect(IllegalStateException.class);
-		this.thrown.expectMessage("Unable to find main method");
-		new TestThread(MissingArgs::main).test();
+	void missingArgsMainMethod() {
+		assertThatIllegalStateException().isThrownBy(() -> new TestThread(MissingArgs::main).test())
+			.withMessageContaining("Unable to find main method");
 	}
 
 	@Test
-	public void nonStatic() throws Exception {
-		this.thrown.expect(IllegalStateException.class);
-		this.thrown.expectMessage("Unable to find main method");
-		new TestThread(() -> new NonStaticMain().main()).test();
+	void nonStatic() {
+		assertThatIllegalStateException().isThrownBy(() -> new TestThread(() -> new NonStaticMain().main()).test())
+			.withMessageContaining("Unable to find main method");
 	}
 
-	private static class TestThread extends Thread {
+	static class TestThread extends Thread {
 
 		private final Runnable runnable;
 
@@ -87,7 +98,7 @@ public class MainMethodTests {
 			this.runnable = runnable;
 		}
 
-		public MainMethod test() throws InterruptedException {
+		MainMethod test() throws InterruptedException {
 			start();
 			join();
 			if (this.exception != null) {
@@ -121,6 +132,15 @@ public class MainMethodTests {
 
 	}
 
+	public static class Nested {
+
+		public static void main(String... args) {
+			mainMethod.set(new MainMethod());
+			Valid.main(args);
+		}
+
+	}
+
 	public static class MissingArgs {
 
 		public static void main() {
@@ -129,9 +149,9 @@ public class MainMethodTests {
 
 	}
 
-	private static class NonStaticMain {
+	public static class NonStaticMain {
 
-		public void main(String... args) {
+		void main(String... args) {
 			mainMethod.set(new MainMethod());
 		}
 

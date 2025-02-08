@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,28 +17,29 @@
 package org.springframework.boot.web.servlet.server;
 
 import java.io.File;
-import java.io.UnsupportedEncodingException;
 import java.net.URL;
-import java.net.URLDecoder;
 import java.nio.charset.Charset;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-import javax.servlet.ServletContext;
-import javax.servlet.ServletException;
-import javax.servlet.SessionCookieConfig;
-
+import jakarta.servlet.ServletContext;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.SessionCookieConfig;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
+import org.springframework.boot.context.properties.PropertyMapper;
 import org.springframework.boot.web.server.AbstractConfigurableWebServerFactory;
+import org.springframework.boot.web.server.Cookie;
 import org.springframework.boot.web.server.MimeMappings;
 import org.springframework.boot.web.servlet.ServletContextInitializer;
 import org.springframework.util.Assert;
@@ -56,8 +57,7 @@ import org.springframework.util.ClassUtils;
  * @author Brian Clozel
  * @since 2.0.0
  */
-public abstract class AbstractServletWebServerFactory
-		extends AbstractConfigurableWebServerFactory
+public abstract class AbstractServletWebServerFactory extends AbstractConfigurableWebServerFactory
 		implements ConfigurableServletWebServerFactory {
 
 	protected final Log logger = LogFactory.getLog(getClass());
@@ -68,9 +68,9 @@ public abstract class AbstractServletWebServerFactory
 
 	private Session session = new Session();
 
-	private boolean registerDefaultServlet = true;
+	private boolean registerDefaultServlet = false;
 
-	private MimeMappings mimeMappings = new MimeMappings(MimeMappings.DEFAULT);
+	private MimeMappings mimeMappings = MimeMappings.lazyCopy(MimeMappings.DEFAULT);
 
 	private List<ServletContextInitializer> initializers = new ArrayList<>();
 
@@ -80,9 +80,13 @@ public abstract class AbstractServletWebServerFactory
 
 	private Map<String, String> initParameters = Collections.emptyMap();
 
+	private List<CookieSameSiteSupplier> cookieSameSiteSuppliers = new ArrayList<>();
+
 	private final DocumentRoot documentRoot = new DocumentRoot(this.logger);
 
 	private final StaticResourceJars staticResourceJars = new StaticResourceJars();
+
+	private final Set<String> webListenerClassNames = new HashSet<>();
 
 	/**
 	 * Create a new {@link AbstractServletWebServerFactory} instance.
@@ -127,15 +131,13 @@ public abstract class AbstractServletWebServerFactory
 	}
 
 	private void checkContextPath(String contextPath) {
-		Assert.notNull(contextPath, "ContextPath must not be null");
+		Assert.notNull(contextPath, "'contextPath' must not be null");
 		if (!contextPath.isEmpty()) {
 			if ("/".equals(contextPath)) {
-				throw new IllegalArgumentException(
-						"Root ContextPath must be specified using an empty string");
+				throw new IllegalArgumentException("Root ContextPath must be specified using an empty string");
 			}
 			if (!contextPath.startsWith("/") || contextPath.endsWith("/")) {
-				throw new IllegalArgumentException(
-						"ContextPath must start with '/' and not end with '/'");
+				throw new IllegalArgumentException("ContextPath must start with '/' and not end with '/'");
 			}
 		}
 	}
@@ -172,7 +174,13 @@ public abstract class AbstractServletWebServerFactory
 
 	@Override
 	public void setMimeMappings(MimeMappings mimeMappings) {
+		Assert.notNull(mimeMappings, "'mimeMappings' must not be null");
 		this.mimeMappings = new MimeMappings(mimeMappings);
+	}
+
+	@Override
+	public void addMimeMappings(MimeMappings mimeMappings) {
+		mimeMappings.forEach((mapping) -> this.mimeMappings.add(mapping.getExtension(), mapping.getMimeType()));
 	}
 
 	/**
@@ -191,13 +199,13 @@ public abstract class AbstractServletWebServerFactory
 
 	@Override
 	public void setInitializers(List<? extends ServletContextInitializer> initializers) {
-		Assert.notNull(initializers, "Initializers must not be null");
+		Assert.notNull(initializers, "'initializers' must not be null");
 		this.initializers = new ArrayList<>(initializers);
 	}
 
 	@Override
 	public void addInitializers(ServletContextInitializer... initializers) {
-		Assert.notNull(initializers, "Initializers must not be null");
+		Assert.notNull(initializers, "'initializers' must not be null");
 		this.initializers.addAll(Arrays.asList(initializers));
 	}
 
@@ -229,7 +237,7 @@ public abstract class AbstractServletWebServerFactory
 
 	@Override
 	public void setLocaleCharsetMappings(Map<Locale, Charset> localeCharsetMappings) {
-		Assert.notNull(localeCharsetMappings, "localeCharsetMappings must not be null");
+		Assert.notNull(localeCharsetMappings, "'localeCharsetMappings' must not be null");
 		this.localeCharsetMappings = localeCharsetMappings;
 	}
 
@@ -242,6 +250,22 @@ public abstract class AbstractServletWebServerFactory
 		return this.initParameters;
 	}
 
+	@Override
+	public void setCookieSameSiteSuppliers(List<? extends CookieSameSiteSupplier> cookieSameSiteSuppliers) {
+		Assert.notNull(cookieSameSiteSuppliers, "'cookieSameSiteSuppliers' must not be null");
+		this.cookieSameSiteSuppliers = new ArrayList<>(cookieSameSiteSuppliers);
+	}
+
+	@Override
+	public void addCookieSameSiteSuppliers(CookieSameSiteSupplier... cookieSameSiteSuppliers) {
+		Assert.notNull(cookieSameSiteSuppliers, "'cookieSameSiteSuppliers' must not be null");
+		this.cookieSameSiteSuppliers.addAll(Arrays.asList(cookieSameSiteSuppliers));
+	}
+
+	public List<CookieSameSiteSupplier> getCookieSameSiteSuppliers() {
+		return this.cookieSameSiteSuppliers;
+	}
+
 	/**
 	 * Utility method that can be used by subclasses wishing to combine the specified
 	 * {@link ServletContextInitializer} parameters with those defined in this instance.
@@ -249,11 +273,9 @@ public abstract class AbstractServletWebServerFactory
 	 * @return a complete set of merged initializers (with the specified parameters
 	 * appearing first)
 	 */
-	protected final ServletContextInitializer[] mergeInitializers(
-			ServletContextInitializer... initializers) {
+	protected final ServletContextInitializer[] mergeInitializers(ServletContextInitializer... initializers) {
 		List<ServletContextInitializer> mergedInitializers = new ArrayList<>();
-		mergedInitializers.add((servletContext) -> this.initParameters
-				.forEach(servletContext::setInitParameter));
+		mergedInitializers.add((servletContext) -> this.initParameters.forEach(servletContext::setInitParameter));
 		mergedInitializers.add(new SessionConfiguringInitializer(this.session));
 		mergedInitializers.addAll(Arrays.asList(initializers));
 		mergedInitializers.addAll(this.initializers);
@@ -261,12 +283,12 @@ public abstract class AbstractServletWebServerFactory
 	}
 
 	/**
-	 * Returns whether or not the JSP servlet should be registered with the web server.
+	 * Returns whether the JSP servlet should be registered with the web server.
 	 * @return {@code true} if the servlet should be registered, otherwise {@code false}
 	 */
 	protected boolean shouldRegisterJspServlet() {
-		return this.jsp != null && this.jsp.getRegistered() && ClassUtils
-				.isPresent(this.jsp.getClassName(), getClass().getClassLoader());
+		return this.jsp != null && this.jsp.getRegistered()
+				&& ClassUtils.isPresent(this.jsp.getClassName(), getClass().getClassLoader());
 	}
 
 	/**
@@ -282,16 +304,6 @@ public abstract class AbstractServletWebServerFactory
 		return this.staticResourceJars.getUrls();
 	}
 
-	protected final String getDecodedFile(URL url) {
-		try {
-			return URLDecoder.decode(url.getFile(), "UTF-8");
-		}
-		catch (UnsupportedEncodingException ex) {
-			throw new IllegalStateException(
-					"Failed to decode '" + url.getFile() + "' using UTF-8");
-		}
-	}
-
 	protected final File getValidSessionStoreDir() {
 		return getValidSessionStoreDir(true);
 	}
@@ -300,12 +312,20 @@ public abstract class AbstractServletWebServerFactory
 		return this.session.getSessionStoreDirectory().getValidDirectory(mkdirs);
 	}
 
+	@Override
+	public void addWebListeners(String... webListenerClassNames) {
+		this.webListenerClassNames.addAll(Arrays.asList(webListenerClassNames));
+	}
+
+	protected final Set<String> getWebListenerClassNames() {
+		return this.webListenerClassNames;
+	}
+
 	/**
 	 * {@link ServletContextInitializer} to apply appropriate parts of the {@link Session}
 	 * configuration.
 	 */
-	private static class SessionConfiguringInitializer
-			implements ServletContextInitializer {
+	private static class SessionConfiguringInitializer implements ServletContextInitializer {
 
 		private final Session session;
 
@@ -316,45 +336,32 @@ public abstract class AbstractServletWebServerFactory
 		@Override
 		public void onStartup(ServletContext servletContext) throws ServletException {
 			if (this.session.getTrackingModes() != null) {
-				servletContext
-						.setSessionTrackingModes(unwrap(this.session.getTrackingModes()));
+				servletContext.setSessionTrackingModes(unwrap(this.session.getTrackingModes()));
 			}
 			configureSessionCookie(servletContext.getSessionCookieConfig());
 		}
 
 		private void configureSessionCookie(SessionCookieConfig config) {
-			Session.Cookie cookie = this.session.getCookie();
-			if (cookie.getName() != null) {
-				config.setName(cookie.getName());
-			}
-			if (cookie.getDomain() != null) {
-				config.setDomain(cookie.getDomain());
-			}
-			if (cookie.getPath() != null) {
-				config.setPath(cookie.getPath());
-			}
-			if (cookie.getComment() != null) {
-				config.setComment(cookie.getComment());
-			}
-			if (cookie.getHttpOnly() != null) {
-				config.setHttpOnly(cookie.getHttpOnly());
-			}
-			if (cookie.getSecure() != null) {
-				config.setSecure(cookie.getSecure());
-			}
-			if (cookie.getMaxAge() != null) {
-				config.setMaxAge((int) cookie.getMaxAge().getSeconds());
-			}
+			Cookie cookie = this.session.getCookie();
+			PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
+			map.from(cookie::getName).to(config::setName);
+			map.from(cookie::getDomain).to(config::setDomain);
+			map.from(cookie::getPath).to(config::setPath);
+			map.from(cookie::getHttpOnly).to(config::setHttpOnly);
+			map.from(cookie::getSecure).to(config::setSecure);
+			map.from(cookie::getMaxAge).asInt(Duration::getSeconds).to(config::setMaxAge);
+			map.from(cookie::getPartitioned)
+				.as(Object::toString)
+				.to((partitioned) -> config.setAttribute("Partitioned", partitioned));
 		}
 
-		private Set<javax.servlet.SessionTrackingMode> unwrap(
-				Set<Session.SessionTrackingMode> modes) {
+		private Set<jakarta.servlet.SessionTrackingMode> unwrap(Set<Session.SessionTrackingMode> modes) {
 			if (modes == null) {
 				return null;
 			}
-			Set<javax.servlet.SessionTrackingMode> result = new LinkedHashSet<>();
+			Set<jakarta.servlet.SessionTrackingMode> result = new LinkedHashSet<>();
 			for (Session.SessionTrackingMode mode : modes) {
-				result.add(javax.servlet.SessionTrackingMode.valueOf(mode.name()));
+				result.add(jakarta.servlet.SessionTrackingMode.valueOf(mode.name()));
 			}
 			return result;
 		}

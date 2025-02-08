@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -32,7 +32,7 @@ import org.springframework.util.Assert;
  * @author Ryon Day
  * @since 1.3.0
  */
-@ConfigurationProperties(prefix = "spring.cache")
+@ConfigurationProperties("spring.cache")
 public class CacheProperties {
 
 	/**
@@ -41,16 +41,14 @@ public class CacheProperties {
 	private CacheType type;
 
 	/**
-	 * Comma-separated list of cache names to create if supported by the underlying cache
-	 * manager. Usually, this disables the ability to create additional caches on-the-fly.
+	 * List of cache names to create if supported by the underlying cache manager.
+	 * Usually, this disables the ability to create additional caches on-the-fly.
 	 */
 	private List<String> cacheNames = new ArrayList<>();
 
 	private final Caffeine caffeine = new Caffeine();
 
 	private final Couchbase couchbase = new Couchbase();
-
-	private final EhCache ehcache = new EhCache();
 
 	private final Infinispan infinispan = new Infinispan();
 
@@ -82,10 +80,6 @@ public class CacheProperties {
 		return this.couchbase;
 	}
 
-	public EhCache getEhcache() {
-		return this.ehcache;
-	}
-
 	public Infinispan getInfinispan() {
 		return this.infinispan;
 	}
@@ -107,8 +101,8 @@ public class CacheProperties {
 	 */
 	public Resource resolveConfigLocation(Resource config) {
 		if (config != null) {
-			Assert.isTrue(config.exists(), "Cache configuration does not exist '"
-					+ config.getDescription() + "'");
+			Assert.isTrue(config.exists(),
+					() -> "'config' resource [%s] must exist".formatted(config.getDescription()));
 			return config;
 		}
 		return null;
@@ -152,26 +146,6 @@ public class CacheProperties {
 
 		public void setExpiration(Duration expiration) {
 			this.expiration = expiration;
-		}
-
-	}
-
-	/**
-	 * EhCache specific cache properties.
-	 */
-	public static class EhCache {
-
-		/**
-		 * The location of the configuration file to use to initialize EhCache.
-		 */
-		private Resource config;
-
-		public Resource getConfig() {
-			return this.config;
-		}
-
-		public void setConfig(Resource config) {
-			this.config = config;
 		}
 
 	}
@@ -257,6 +231,11 @@ public class CacheProperties {
 		 */
 		private boolean useKeyPrefix = true;
 
+		/**
+		 * Whether to enable cache statistics.
+		 */
+		private boolean enableStatistics;
+
 		public Duration getTimeToLive() {
 			return this.timeToLive;
 		}
@@ -287,6 +266,14 @@ public class CacheProperties {
 
 		public void setUseKeyPrefix(boolean useKeyPrefix) {
 			this.useKeyPrefix = useKeyPrefix;
+		}
+
+		public boolean isEnableStatistics() {
+			return this.enableStatistics;
+		}
+
+		public void setEnableStatistics(boolean enableStatistics) {
+			this.enableStatistics = enableStatistics;
 		}
 
 	}

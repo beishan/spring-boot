@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,11 +16,10 @@
 
 package org.springframework.boot.autoconfigure.data.couchbase;
 
-import javax.validation.Validator;
-
 import com.couchbase.client.java.Bucket;
+import jakarta.validation.Validator;
 
-import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnSingleCandidate;
@@ -40,23 +39,20 @@ import org.springframework.data.couchbase.repository.CouchbaseRepository;
  * @author Stephane Nicoll
  * @since 1.4.0
  */
-@Configuration
+@AutoConfiguration(after = { CouchbaseAutoConfiguration.class, ValidationAutoConfiguration.class })
 @ConditionalOnClass({ Bucket.class, CouchbaseRepository.class })
-@AutoConfigureAfter({ CouchbaseAutoConfiguration.class,
-		ValidationAutoConfiguration.class })
 @EnableConfigurationProperties(CouchbaseDataProperties.class)
-@Import({ CouchbaseConfigurerAdapterConfiguration.class,
-		SpringBootCouchbaseDataConfiguration.class })
+@Import({ CouchbaseDataConfiguration.class, CouchbaseClientFactoryConfiguration.class,
+		CouchbaseClientFactoryDependentConfiguration.class })
 public class CouchbaseDataAutoConfiguration {
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	@ConditionalOnClass(Validator.class)
 	public static class ValidationConfiguration {
 
 		@Bean
 		@ConditionalOnSingleCandidate(Validator.class)
-		public ValidatingCouchbaseEventListener validationEventListener(
-				Validator validator) {
+		public ValidatingCouchbaseEventListener validationEventListener(Validator validator) {
 			return new ValidatingCouchbaseEventListener(validator);
 		}
 

@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,8 +21,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-import javax.servlet.ServletException;
-
+import jakarta.servlet.ServletException;
 import org.apache.catalina.Container;
 import org.apache.catalina.Context;
 import org.apache.catalina.core.StandardWrapper;
@@ -57,33 +56,29 @@ final class DispatcherServletHandlerMappings {
 		this.applicationContext = applicationContext;
 	}
 
-	public List<HandlerMapping> getHandlerMappings() {
-		List<HandlerMapping> handlerMappings = this.dispatcherServlet
-				.getHandlerMappings();
+	List<HandlerMapping> getHandlerMappings() {
+		List<HandlerMapping> handlerMappings = this.dispatcherServlet.getHandlerMappings();
 		if (handlerMappings == null) {
 			initializeDispatcherServletIfPossible();
 			handlerMappings = this.dispatcherServlet.getHandlerMappings();
 		}
-		return handlerMappings == null ? Collections.emptyList() : handlerMappings;
+		return (handlerMappings != null) ? handlerMappings : Collections.emptyList();
 	}
 
 	private void initializeDispatcherServletIfPossible() {
-		if (!(this.applicationContext instanceof ServletWebServerApplicationContext)) {
+		if (!(this.applicationContext instanceof ServletWebServerApplicationContext webServerApplicationContext)) {
 			return;
 		}
-		WebServer webServer = ((ServletWebServerApplicationContext) this.applicationContext)
-				.getWebServer();
-		if (webServer instanceof UndertowServletWebServer) {
-			new UndertowServletInitializer((UndertowServletWebServer) webServer)
-					.initializeServlet(this.name);
+		WebServer webServer = webServerApplicationContext.getWebServer();
+		if (webServer instanceof UndertowServletWebServer undertowServletWebServer) {
+			new UndertowServletInitializer(undertowServletWebServer).initializeServlet(this.name);
 		}
-		else if (webServer instanceof TomcatWebServer) {
-			new TomcatServletInitializer((TomcatWebServer) webServer)
-					.initializeServlet(this.name);
+		else if (webServer instanceof TomcatWebServer tomcatWebServer) {
+			new TomcatServletInitializer(tomcatWebServer).initializeServlet(this.name);
 		}
 	}
 
-	public String getName() {
+	String getName() {
 		return this.name;
 	}
 
@@ -101,15 +96,16 @@ final class DispatcherServletHandlerMappings {
 
 		private Optional<Context> findContext() {
 			return Stream.of(this.webServer.getTomcat().getHost().findChildren())
-					.filter(Context.class::isInstance).map(Context.class::cast)
-					.findFirst();
+				.filter(Context.class::isInstance)
+				.map(Context.class::cast)
+				.findFirst();
 		}
 
 		private void initializeServlet(Context context, String name) {
 			Container child = context.findChild(name);
-			if (child instanceof StandardWrapper) {
+			if (child instanceof StandardWrapper wrapper) {
 				try {
-					((StandardWrapper) child).allocate();
+					wrapper.deallocate(wrapper.allocate());
 				}
 				catch (ServletException ex) {
 					// Continue
@@ -129,8 +125,7 @@ final class DispatcherServletHandlerMappings {
 
 		void initializeServlet(String name) {
 			try {
-				this.webServer.getDeploymentManager().getDeployment().getServlets()
-						.getManagedServlet(name).forceInit();
+				this.webServer.getDeploymentManager().getDeployment().getServlets().getManagedServlet(name).forceInit();
 			}
 			catch (ServletException ex) {
 				// Continue

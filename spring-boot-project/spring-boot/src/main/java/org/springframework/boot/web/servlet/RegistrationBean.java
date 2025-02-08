@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,9 +16,8 @@
 
 package org.springframework.boot.web.servlet;
 
-import javax.servlet.ServletContext;
-import javax.servlet.ServletException;
-
+import jakarta.servlet.ServletContext;
+import jakarta.servlet.ServletException;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -47,8 +46,7 @@ public abstract class RegistrationBean implements ServletContextInitializer, Ord
 	public final void onStartup(ServletContext servletContext) throws ServletException {
 		String description = getDescription();
 		if (!isEnabled()) {
-			logger.info(StringUtils.capitalize(description)
-					+ " was not registered (disabled)");
+			logger.info(StringUtils.capitalize(description) + " was not registered (disabled)");
 			return;
 		}
 		register(description, servletContext);

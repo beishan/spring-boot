@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -33,28 +33,36 @@ import org.springframework.web.cors.CorsConfiguration;
  * @author Andy Wilkinson
  * @since 2.0.0
  */
-@ConfigurationProperties(prefix = "management.endpoints.web.cors")
+@ConfigurationProperties("management.endpoints.web.cors")
 public class CorsEndpointProperties {
 
 	/**
-	 * Comma-separated list of origins to allow. '*' allows all origins. When not set,
-	 * CORS support is disabled.
+	 * List of origins to allow. '*' allows all origins. When credentials are allowed, '*'
+	 * cannot be used and origin patterns should be configured instead. When no allowed
+	 * origins or allowed origin patterns are set, CORS support is disabled.
 	 */
 	private List<String> allowedOrigins = new ArrayList<>();
 
 	/**
-	 * Comma-separated list of methods to allow. '*' allows all methods. When not set,
-	 * defaults to GET.
+	 * List of origin patterns to allow. Unlike allowed origins which only supports '*',
+	 * origin patterns are more flexible (for example 'https://*.example.com') and can be
+	 * used when credentials are allowed. When no allowed origin patterns or allowed
+	 * origins are set, CORS support is disabled.
+	 */
+	private List<String> allowedOriginPatterns = new ArrayList<>();
+
+	/**
+	 * List of methods to allow. '*' allows all methods. When not set, defaults to GET.
 	 */
 	private List<String> allowedMethods = new ArrayList<>();
 
 	/**
-	 * Comma-separated list of headers to allow in a request. '*' allows all headers.
+	 * List of headers to allow in a request. '*' allows all headers.
 	 */
 	private List<String> allowedHeaders = new ArrayList<>();
 
 	/**
-	 * Comma-separated list of headers to include in a response.
+	 * List of headers to include in a response.
 	 */
 	private List<String> exposedHeaders = new ArrayList<>();
 
@@ -76,6 +84,14 @@ public class CorsEndpointProperties {
 
 	public void setAllowedOrigins(List<String> allowedOrigins) {
 		this.allowedOrigins = allowedOrigins;
+	}
+
+	public List<String> getAllowedOriginPatterns() {
+		return this.allowedOriginPatterns;
+	}
+
+	public void setAllowedOriginPatterns(List<String> allowedOriginPatterns) {
+		this.allowedOriginPatterns = allowedOriginPatterns;
 	}
 
 	public List<String> getAllowedMethods() {
@@ -119,22 +135,18 @@ public class CorsEndpointProperties {
 	}
 
 	public CorsConfiguration toCorsConfiguration() {
-		if (CollectionUtils.isEmpty(this.allowedOrigins)) {
+		if (CollectionUtils.isEmpty(this.allowedOrigins) && CollectionUtils.isEmpty(this.allowedOriginPatterns)) {
 			return null;
 		}
 		PropertyMapper map = PropertyMapper.get();
 		CorsConfiguration configuration = new CorsConfiguration();
 		map.from(this::getAllowedOrigins).to(configuration::setAllowedOrigins);
-		map.from(this::getAllowedHeaders).whenNot(CollectionUtils::isEmpty)
-				.to(configuration::setAllowedHeaders);
-		map.from(this::getAllowedMethods).whenNot(CollectionUtils::isEmpty)
-				.to(configuration::setAllowedMethods);
-		map.from(this::getExposedHeaders).whenNot(CollectionUtils::isEmpty)
-				.to(configuration::setExposedHeaders);
-		map.from(this::getMaxAge).whenNonNull().as(Duration::getSeconds)
-				.to(configuration::setMaxAge);
-		map.from(this::getAllowCredentials).whenNonNull()
-				.to(configuration::setAllowCredentials);
+		map.from(this::getAllowedOriginPatterns).to(configuration::setAllowedOriginPatterns);
+		map.from(this::getAllowedHeaders).whenNot(CollectionUtils::isEmpty).to(configuration::setAllowedHeaders);
+		map.from(this::getAllowedMethods).whenNot(CollectionUtils::isEmpty).to(configuration::setAllowedMethods);
+		map.from(this::getExposedHeaders).whenNot(CollectionUtils::isEmpty).to(configuration::setExposedHeaders);
+		map.from(this::getMaxAge).whenNonNull().as(Duration::getSeconds).to(configuration::setMaxAge);
+		map.from(this::getAllowCredentials).whenNonNull().to(configuration::setAllowCredentials);
 		return configuration;
 	}
 

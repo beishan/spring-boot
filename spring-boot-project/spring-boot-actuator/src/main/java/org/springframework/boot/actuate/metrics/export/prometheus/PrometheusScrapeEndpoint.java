@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,44 +16,70 @@
 
 package org.springframework.boot.actuate.metrics.export.prometheus;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.StringWriter;
-import java.io.Writer;
+import java.util.Properties;
+import java.util.Set;
 
-import io.prometheus.client.CollectorRegistry;
-import io.prometheus.client.exporter.common.TextFormat;
+import io.prometheus.metrics.config.PrometheusProperties;
+import io.prometheus.metrics.config.PrometheusPropertiesLoader;
+import io.prometheus.metrics.expositionformats.ExpositionFormats;
+import io.prometheus.metrics.model.registry.PrometheusRegistry;
+import io.prometheus.metrics.model.snapshots.MetricSnapshots;
 
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
+import org.springframework.boot.actuate.endpoint.web.WebEndpointResponse;
 import org.springframework.boot.actuate.endpoint.web.annotation.WebEndpoint;
+import org.springframework.lang.Nullable;
 
 /**
- * {@link Endpoint} that outputs metrics in a format that can be scraped by the Prometheus
- * server.
+ * {@link Endpoint @Endpoint} that outputs metrics in a format that can be scraped by the
+ * Prometheus server.
  *
  * @author Jon Schneider
+ * @author Johnny Lim
+ * @author Moritz Halbritter
  * @since 2.0.0
  */
 @WebEndpoint(id = "prometheus")
 public class PrometheusScrapeEndpoint {
 
-	private final CollectorRegistry collectorRegistry;
+	private static final int METRICS_SCRAPE_CHARS_EXTRA = 1024;
 
-	public PrometheusScrapeEndpoint(CollectorRegistry collectorRegistry) {
-		this.collectorRegistry = collectorRegistry;
+	private final PrometheusRegistry prometheusRegistry;
+
+	private final ExpositionFormats expositionFormats;
+
+	private volatile int nextMetricsScrapeSize = 16;
+
+	/**
+	 * Creates a new {@link PrometheusScrapeEndpoint}.
+	 * @param prometheusRegistry the Prometheus registry to use
+	 * @param exporterProperties the properties used to configure Prometheus'
+	 * {@link ExpositionFormats}
+	 * @since 3.3.1
+	 */
+	public PrometheusScrapeEndpoint(PrometheusRegistry prometheusRegistry, Properties exporterProperties) {
+		this.prometheusRegistry = prometheusRegistry;
+		PrometheusProperties prometheusProperties = (exporterProperties != null)
+				? PrometheusPropertiesLoader.load(exporterProperties) : PrometheusPropertiesLoader.load();
+		this.expositionFormats = ExpositionFormats.init(prometheusProperties.getExporterProperties());
 	}
 
-	@ReadOperation(produces = TextFormat.CONTENT_TYPE_004)
-	public String scrape() {
+	@ReadOperation(producesFrom = PrometheusOutputFormat.class)
+	public WebEndpointResponse<byte[]> scrape(PrometheusOutputFormat format, @Nullable Set<String> includedNames) {
 		try {
-			Writer writer = new StringWriter();
-			TextFormat.write004(writer, this.collectorRegistry.metricFamilySamples());
-			return writer.toString();
+			ByteArrayOutputStream outputStream = new ByteArrayOutputStream(this.nextMetricsScrapeSize);
+			MetricSnapshots metricSnapshots = (includedNames != null)
+					? this.prometheusRegistry.scrape(includedNames::contains) : this.prometheusRegistry.scrape();
+			format.write(this.expositionFormats, outputStream, metricSnapshots);
+			byte[] content = outputStream.toByteArray();
+			this.nextMetricsScrapeSize = content.length + METRICS_SCRAPE_CHARS_EXTRA;
+			return new WebEndpointResponse<>(content, format);
 		}
-		catch (IOException e) {
-			// This actually never happens since StringWriter::write() doesn't throw any
-			// IOException
-			throw new RuntimeException("Writing metrics failed", e);
+		catch (IOException ex) {
+			throw new IllegalStateException("Writing metrics failed", ex);
 		}
 	}
 

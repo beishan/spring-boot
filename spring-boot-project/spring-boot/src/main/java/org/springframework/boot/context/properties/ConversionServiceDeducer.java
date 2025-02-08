@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,17 +16,17 @@
 
 package org.springframework.boot.context.properties;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
-import org.springframework.beans.factory.NoSuchBeanDefinitionException;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.convert.ConversionService;
-import org.springframework.core.convert.converter.Converter;
-import org.springframework.core.convert.converter.GenericConverter;
+import org.springframework.core.convert.support.DefaultConversionService;
+import org.springframework.format.support.FormattingConversionService;
 
 /**
  * Utility to deduce the {@link ConversionService} to use for configuration properties
@@ -42,60 +42,49 @@ class ConversionServiceDeducer {
 		this.applicationContext = applicationContext;
 	}
 
-	public ConversionService getConversionService() {
-		try {
-			return this.applicationContext.getBean(
-					ConfigurableApplicationContext.CONVERSION_SERVICE_BEAN_NAME,
-					ConversionService.class);
+	List<ConversionService> getConversionServices() {
+		if (hasUserDefinedConfigurationServiceBean()) {
+			return Collections.singletonList(this.applicationContext
+				.getBean(ConfigurableApplicationContext.CONVERSION_SERVICE_BEAN_NAME, ConversionService.class));
 		}
-		catch (NoSuchBeanDefinitionException ex) {
-			return this.applicationContext.getAutowireCapableBeanFactory()
-					.createBean(Factory.class).create();
+		if (this.applicationContext instanceof ConfigurableApplicationContext configurableContext) {
+			return getConversionServices(configurableContext);
 		}
+		return null;
 	}
 
-	private static class Factory {
-
-		private List<Converter<?, ?>> converters = Collections.emptyList();
-
-		private List<GenericConverter> genericConverters = Collections.emptyList();
-
-		/**
-		 * A list of custom converters (in addition to the defaults) to use when
-		 * converting properties for binding.
-		 * @param converters the converters to set
-		 */
-		@Autowired(required = false)
-		@ConfigurationPropertiesBinding
-		public void setConverters(List<Converter<?, ?>> converters) {
-			this.converters = converters;
+	private List<ConversionService> getConversionServices(ConfigurableApplicationContext applicationContext) {
+		List<ConversionService> conversionServices = new ArrayList<>();
+		FormattingConversionService beansConverterService = new FormattingConversionService();
+		Map<String, Object> converterBeans = addBeans(applicationContext, beansConverterService);
+		if (!converterBeans.isEmpty()) {
+			conversionServices.add(beansConverterService);
 		}
-
-		/**
-		 * A list of custom converters (in addition to the defaults) to use when
-		 * converting properties for binding.
-		 * @param converters the converters to set
-		 */
-		@Autowired(required = false)
-		@ConfigurationPropertiesBinding
-		public void setGenericConverters(List<GenericConverter> converters) {
-			this.genericConverters = converters;
+		if (applicationContext.getBeanFactory().getConversionService() != null) {
+			conversionServices.add(applicationContext.getBeanFactory().getConversionService());
 		}
-
-		public ConversionService create() {
-			if (this.converters.isEmpty() && this.genericConverters.isEmpty()) {
-				return ApplicationConversionService.getSharedInstance();
-			}
-			ApplicationConversionService conversionService = new ApplicationConversionService();
-			for (Converter<?, ?> converter : this.converters) {
-				conversionService.addConverter(converter);
-			}
-			for (GenericConverter genericConverter : this.genericConverters) {
-				conversionService.addConverter(genericConverter);
-			}
-			return conversionService;
+		if (!converterBeans.isEmpty()) {
+			// Converters beans used to be added to a custom ApplicationConversionService
+			// after the BeanFactory's ConversionService. For backwards compatibility, we
+			// add an ApplicationConversationService as a fallback in the same place in
+			// the list.
+			conversionServices.add(ApplicationConversionService.getSharedInstance());
 		}
+		return conversionServices;
+	}
 
+	private Map<String, Object> addBeans(ConfigurableApplicationContext applicationContext,
+			FormattingConversionService converterService) {
+		DefaultConversionService.addCollectionConverters(converterService);
+		converterService.addConverter(new ConfigurationPropertiesCharSequenceToObjectConverter(converterService));
+		return ApplicationConversionService.addBeans(converterService, applicationContext.getBeanFactory(),
+				ConfigurationPropertiesBinding.VALUE);
+	}
+
+	private boolean hasUserDefinedConfigurationServiceBean() {
+		String beanName = ConfigurableApplicationContext.CONVERSION_SERVICE_BEAN_NAME;
+		return this.applicationContext.containsBean(beanName) && this.applicationContext.getAutowireCapableBeanFactory()
+			.isTypeMatch(beanName, ConversionService.class);
 	}
 
 }

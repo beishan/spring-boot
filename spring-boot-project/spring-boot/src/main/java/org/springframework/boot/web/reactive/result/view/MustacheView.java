@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2023 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -34,6 +34,7 @@ import reactor.core.publisher.Mono;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.http.MediaType;
 import org.springframework.web.reactive.result.view.AbstractUrlBasedView;
 import org.springframework.web.reactive.result.view.View;
@@ -75,19 +76,19 @@ public class MustacheView extends AbstractUrlBasedView {
 	}
 
 	@Override
-	protected Mono<Void> renderInternal(Map<String, Object> model, MediaType contentType,
-			ServerWebExchange exchange) {
+	protected Mono<Void> renderInternal(Map<String, Object> model, MediaType contentType, ServerWebExchange exchange) {
 		Resource resource = resolveResource();
 		if (resource == null) {
-			return Mono.error(new IllegalStateException(
-					"Could not find Mustache template with URL [" + getUrl() + "]"));
+			return Mono
+				.error(new IllegalStateException("Could not find Mustache template with URL [" + getUrl() + "]"));
 		}
-		DataBuffer dataBuffer = exchange.getResponse().bufferFactory().allocateBuffer();
+		DataBuffer dataBuffer = exchange.getResponse()
+			.bufferFactory()
+			.allocateBuffer(DefaultDataBufferFactory.DEFAULT_INITIAL_CAPACITY);
 		try (Reader reader = getReader(resource)) {
 			Template template = this.compiler.compile(reader);
-			Charset charset = getCharset(contentType).orElse(getDefaultCharset());
-			try (Writer writer = new OutputStreamWriter(dataBuffer.asOutputStream(),
-					charset)) {
+			Charset charset = getCharset(contentType).orElseGet(this::getDefaultCharset);
+			try (Writer writer = new OutputStreamWriter(dataBuffer.asOutputStream(), charset)) {
 				template.execute(model, writer);
 				writer.flush();
 			}
@@ -115,7 +116,7 @@ public class MustacheView extends AbstractUrlBasedView {
 	}
 
 	private Optional<Charset> getCharset(MediaType mediaType) {
-		return Optional.ofNullable(mediaType != null ? mediaType.getCharset() : null);
+		return Optional.ofNullable((mediaType != null) ? mediaType.getCharset() : null);
 	}
 
 }

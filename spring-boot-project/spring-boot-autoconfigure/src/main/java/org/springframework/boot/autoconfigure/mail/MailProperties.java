@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -31,13 +31,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @author Eddú Meléndez
  * @since 1.2.0
  */
-@ConfigurationProperties(prefix = "spring.mail")
+@ConfigurationProperties("spring.mail")
 public class MailProperties {
 
 	private static final Charset DEFAULT_CHARSET = StandardCharsets.UTF_8;
 
 	/**
-	 * SMTP server host. For instance, `smtp.example.com`.
+	 * SMTP server host. For instance, 'smtp.example.com'.
 	 */
 	private String host;
 
@@ -67,19 +67,19 @@ public class MailProperties {
 	private Charset defaultEncoding = DEFAULT_CHARSET;
 
 	/**
-	 * Additional JavaMail session properties.
+	 * Additional JavaMail Session properties.
 	 */
-	private Map<String, String> properties = new HashMap<>();
+	private final Map<String, String> properties = new HashMap<>();
 
 	/**
-	 * Session JNDI name. When set, takes precedence over other mail settings.
+	 * Session JNDI name. When set, takes precedence over other Session settings.
 	 */
 	private String jndiName;
 
 	/**
-	 * Whether to test that the mail server is available on startup.
+	 * SSL configuration.
 	 */
-	private boolean testConnection;
+	private final Ssl ssl = new Ssl();
 
 	public String getHost() {
 		return this.host;
@@ -141,12 +141,43 @@ public class MailProperties {
 		return this.jndiName;
 	}
 
-	public boolean isTestConnection() {
-		return this.testConnection;
+	public Ssl getSsl() {
+		return this.ssl;
 	}
 
-	public void setTestConnection(boolean testConnection) {
-		this.testConnection = testConnection;
+	public static class Ssl {
+
+		/**
+		 * Whether to enable SSL support. If enabled, 'mail.(protocol).ssl.enable'
+		 * property is set to 'true'.
+		 */
+		private boolean enabled = false;
+
+		/**
+		 * SSL bundle name. If set, 'mail.(protocol).ssl.socketFactory' property is set to
+		 * an SSLSocketFactory obtained from the corresponding SSL bundle.
+		 * <p>
+		 * Note that the STARTTLS command can use the corresponding SSLSocketFactory, even
+		 * if the 'mail.(protocol).ssl.enable' property is not set.
+		 */
+		private String bundle;
+
+		public boolean isEnabled() {
+			return this.enabled;
+		}
+
+		public void setEnabled(boolean enabled) {
+			this.enabled = enabled;
+		}
+
+		public String getBundle() {
+			return this.bundle;
+		}
+
+		public void setBundle(String bundle) {
+			this.bundle = bundle;
+		}
+
 	}
 
 }

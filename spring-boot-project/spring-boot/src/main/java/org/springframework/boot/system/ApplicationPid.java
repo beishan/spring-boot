@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,7 +20,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.Set;
@@ -36,33 +35,55 @@ import org.springframework.util.ObjectUtils;
  */
 public class ApplicationPid {
 
-	private static final PosixFilePermission[] WRITE_PERMISSIONS = {
-			PosixFilePermission.OWNER_WRITE, PosixFilePermission.GROUP_WRITE,
-			PosixFilePermission.OTHERS_WRITE };
+	private static final PosixFilePermission[] WRITE_PERMISSIONS = { PosixFilePermission.OWNER_WRITE,
+			PosixFilePermission.GROUP_WRITE, PosixFilePermission.OTHERS_WRITE };
 
-	private final String pid;
+	private final Long pid;
 
 	public ApplicationPid() {
-		this.pid = getPid();
+		this.pid = currentProcessPid();
 	}
 
-	protected ApplicationPid(String pid) {
+	protected ApplicationPid(Long pid) {
 		this.pid = pid;
 	}
 
-	private String getPid() {
+	private Long currentProcessPid() {
 		try {
-			String jvmName = ManagementFactory.getRuntimeMXBean().getName();
-			return jvmName.split("@")[0];
+			return ProcessHandle.current().pid();
 		}
 		catch (Throwable ex) {
 			return null;
 		}
 	}
 
+	/**
+	 * Return if the application PID is available.
+	 * @return {@code true} if the PID is available
+	 * @since 3.4.0
+	 */
+	public boolean isAvailable() {
+		return this.pid != null;
+	}
+
+	/**
+	 * Return the application PID as a {@link Long}.
+	 * @return the application PID or {@code null}
+	 * @since 3.4.0
+	 */
+	public Long toLong() {
+		return this.pid;
+	}
+
 	@Override
-	public String toString() {
-		return (this.pid == null ? "???" : this.pid);
+	public boolean equals(Object obj) {
+		if (obj == this) {
+			return true;
+		}
+		if (obj instanceof ApplicationPid other) {
+			return ObjectUtils.nullSafeEquals(this.pid, other.pid);
+		}
+		return false;
 	}
 
 	@Override
@@ -71,14 +92,8 @@ public class ApplicationPid {
 	}
 
 	@Override
-	public boolean equals(Object obj) {
-		if (obj == this) {
-			return true;
-		}
-		if (obj != null && obj instanceof ApplicationPid) {
-			return ObjectUtils.nullSafeEquals(this.pid, ((ApplicationPid) obj).pid);
-		}
-		return false;
+	public String toString() {
+		return (this.pid != null) ? String.valueOf(this.pid) : "???";
 	}
 
 	/**
@@ -89,16 +104,16 @@ public class ApplicationPid {
 	 */
 	public void write(File file) throws IOException {
 		Assert.state(this.pid != null, "No PID available");
-		createParentFolder(file);
+		createParentDirectory(file);
 		if (file.exists()) {
 			assertCanOverwrite(file);
 		}
 		try (FileWriter writer = new FileWriter(file)) {
-			writer.append(this.pid);
+			writer.append(String.valueOf(this.pid));
 		}
 	}
 
-	private void createParentFolder(File file) {
+	private void createParentDirectory(File file) {
 		File parent = file.getParentFile();
 		if (parent != null) {
 			parent.mkdirs();
@@ -107,14 +122,13 @@ public class ApplicationPid {
 
 	private void assertCanOverwrite(File file) throws IOException {
 		if (!file.canWrite() || !canWritePosixFile(file)) {
-			throw new FileNotFoundException(file.toString() + " (permission denied)");
+			throw new FileNotFoundException(file + " (permission denied)");
 		}
 	}
 
 	private boolean canWritePosixFile(File file) throws IOException {
 		try {
-			Set<PosixFilePermission> permissions = Files
-					.getPosixFilePermissions(file.toPath());
+			Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(file.toPath());
 			for (PosixFilePermission permission : WRITE_PERMISSIONS) {
 				if (permissions.contains(permission)) {
 					return true;

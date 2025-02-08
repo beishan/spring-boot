@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -31,7 +31,7 @@ import org.springframework.util.Assert;
  *
  * @author Eddú Meléndez
  * @author Stephane Nicoll
- * @version 2.0.0
+ * @since 2.0.0
  */
 public class LdapHealthIndicator extends AbstractHealthIndicator {
 
@@ -41,7 +41,7 @@ public class LdapHealthIndicator extends AbstractHealthIndicator {
 
 	public LdapHealthIndicator(LdapOperations ldapOperations) {
 		super("LDAP health check failed");
-		Assert.notNull(ldapOperations, "LdapOperations must not be null");
+		Assert.notNull(ldapOperations, "'ldapOperations' must not be null");
 		this.ldapOperations = ldapOperations;
 	}
 
@@ -51,7 +51,7 @@ public class LdapHealthIndicator extends AbstractHealthIndicator {
 		builder.up().withDetail("version", version);
 	}
 
-	private static class VersionContextExecutor implements ContextExecutor<String> {
+	private static final class VersionContextExecutor implements ContextExecutor<String> {
 
 		@Override
 		public String executeWithContext(DirContext ctx) throws NamingException {

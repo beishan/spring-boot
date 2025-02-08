@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -85,8 +85,8 @@ public abstract class AbstractJsonMarshalTester<T> {
 	 * @param type the type under test
 	 */
 	public AbstractJsonMarshalTester(Class<?> resourceLoadClass, ResolvableType type) {
-		Assert.notNull(resourceLoadClass, "ResourceLoadClass must not be null");
-		Assert.notNull(type, "Type must not be null");
+		Assert.notNull(resourceLoadClass, "'resourceLoadClass' must not be null");
+		Assert.notNull(type, "'type' must not be null");
 		initialize(resourceLoadClass, type);
 	}
 
@@ -127,9 +127,20 @@ public abstract class AbstractJsonMarshalTester<T> {
 	 */
 	public JsonContent<T> write(T value) throws IOException {
 		verify();
-		Assert.notNull(value, "Value must not be null");
+		Assert.notNull(value, "'value' must not be null");
 		String json = writeObject(value, this.type);
-		return new JsonContent<>(this.resourceLoadClass, this.type, json);
+		return getJsonContent(json);
+	}
+
+	/**
+	 * Factory method used to get a {@link JsonContent} instance from a source JSON
+	 * string.
+	 * @param json the source JSON
+	 * @return a new {@link JsonContent} instance
+	 * @since 2.1.5
+	 */
+	protected JsonContent<T> getJsonContent(String json) {
+		return new JsonContent<>(getResourceLoadClass(), getType(), json);
 	}
 
 	/**
@@ -151,7 +162,7 @@ public abstract class AbstractJsonMarshalTester<T> {
 	 */
 	public ObjectContent<T> parse(byte[] jsonBytes) throws IOException {
 		verify();
-		Assert.notNull(jsonBytes, "JsonBytes must not be null");
+		Assert.notNull(jsonBytes, "'jsonBytes' must not be null");
 		return read(new ByteArrayResource(jsonBytes));
 	}
 
@@ -174,7 +185,7 @@ public abstract class AbstractJsonMarshalTester<T> {
 	 */
 	public ObjectContent<T> parse(String jsonString) throws IOException {
 		verify();
-		Assert.notNull(jsonString, "JsonString must not be null");
+		Assert.notNull(jsonString, "'jsonString' must not be null");
 		return read(new StringReader(jsonString));
 	}
 
@@ -199,7 +210,7 @@ public abstract class AbstractJsonMarshalTester<T> {
 	 */
 	public ObjectContent<T> read(String resourcePath) throws IOException {
 		verify();
-		Assert.notNull(resourcePath, "ResourcePath must not be null");
+		Assert.notNull(resourcePath, "'resourcePath' must not be null");
 		return read(new ClassPathResource(resourcePath, this.resourceLoadClass));
 	}
 
@@ -222,7 +233,7 @@ public abstract class AbstractJsonMarshalTester<T> {
 	 */
 	public ObjectContent<T> read(File file) throws IOException {
 		verify();
-		Assert.notNull(file, "File must not be null");
+		Assert.notNull(file, "'file' must not be null");
 		return read(new FileSystemResource(file));
 	}
 
@@ -245,7 +256,7 @@ public abstract class AbstractJsonMarshalTester<T> {
 	 */
 	public ObjectContent<T> read(InputStream inputStream) throws IOException {
 		verify();
-		Assert.notNull(inputStream, "InputStream must not be null");
+		Assert.notNull(inputStream, "'inputStream' must not be null");
 		return read(new InputStreamResource(inputStream));
 	}
 
@@ -268,7 +279,7 @@ public abstract class AbstractJsonMarshalTester<T> {
 	 */
 	public ObjectContent<T> read(Resource resource) throws IOException {
 		verify();
-		Assert.notNull(resource, "Resource must not be null");
+		Assert.notNull(resource, "'resource' must not be null");
 		InputStream inputStream = resource.getInputStream();
 		T object = readObject(inputStream, this.type);
 		closeQuietly(inputStream);
@@ -294,7 +305,7 @@ public abstract class AbstractJsonMarshalTester<T> {
 	 */
 	public ObjectContent<T> read(Reader reader) throws IOException {
 		verify();
-		Assert.notNull(reader, "Reader must not be null");
+		Assert.notNull(reader, "'reader' must not be null");
 		T object = readObject(reader, this.type);
 		closeQuietly(reader);
 		return new ObjectContent<>(this.type, object);
@@ -305,12 +316,12 @@ public abstract class AbstractJsonMarshalTester<T> {
 			closeable.close();
 		}
 		catch (IOException ex) {
+			// Ignore
 		}
 	}
 
 	private void verify() {
-		Assert.state(this.resourceLoadClass != null,
-				"Uninitialized JsonMarshalTester (ResourceLoadClass is null)");
+		Assert.state(this.resourceLoadClass != null, "Uninitialized JsonMarshalTester (ResourceLoadClass is null)");
 		Assert.state(this.type != null, "Uninitialized JsonMarshalTester (Type is null)");
 	}
 
@@ -321,8 +332,7 @@ public abstract class AbstractJsonMarshalTester<T> {
 	 * @return the JSON string
 	 * @throws IOException on write error
 	 */
-	protected abstract String writeObject(T value, ResolvableType type)
-			throws IOException;
+	protected abstract String writeObject(T value, ResolvableType type) throws IOException;
 
 	/**
 	 * Read from the specified input stream to create an object of the specified type. The
@@ -332,8 +342,7 @@ public abstract class AbstractJsonMarshalTester<T> {
 	 * @return the resulting object
 	 * @throws IOException on read error
 	 */
-	protected T readObject(InputStream inputStream, ResolvableType type)
-			throws IOException {
+	protected T readObject(InputStream inputStream, ResolvableType type) throws IOException {
 		BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
 		return readObject(reader, type);
 	}
@@ -345,41 +354,38 @@ public abstract class AbstractJsonMarshalTester<T> {
 	 * @return the resulting object
 	 * @throws IOException on read error
 	 */
-	protected abstract T readObject(Reader reader, ResolvableType type)
-			throws IOException;
+	protected abstract T readObject(Reader reader, ResolvableType type) throws IOException;
 
 	/**
 	 * Utility class used to support field initialization. Used by subclasses to support
 	 * {@code initFields}.
 	 *
-	 * @param <M> The marshaller type
+	 * @param <M> the marshaller type
 	 */
 	protected abstract static class FieldInitializer<M> {
 
 		private final Class<?> testerClass;
 
 		@SuppressWarnings("rawtypes")
-		protected FieldInitializer(
-				Class<? extends AbstractJsonMarshalTester> testerClass) {
-			Assert.notNull(testerClass, "TesterClass must not be null");
+		protected FieldInitializer(Class<? extends AbstractJsonMarshalTester> testerClass) {
+			Assert.notNull(testerClass, "'testerClass' must not be null");
 			this.testerClass = testerClass;
 		}
 
 		public void initFields(Object testInstance, M marshaller) {
-			Assert.notNull(testInstance, "TestInstance must not be null");
-			Assert.notNull(marshaller, "Marshaller must not be null");
+			Assert.notNull(testInstance, "'testInstance' must not be null");
+			Assert.notNull(marshaller, "'marshaller' must not be null");
 			initFields(testInstance, () -> marshaller);
 		}
 
 		public void initFields(Object testInstance, final ObjectFactory<M> marshaller) {
-			Assert.notNull(testInstance, "TestInstance must not be null");
-			Assert.notNull(marshaller, "Marshaller must not be null");
+			Assert.notNull(testInstance, "'testInstance' must not be null");
+			Assert.notNull(marshaller, "'marshaller' must not be null");
 			ReflectionUtils.doWithFields(testInstance.getClass(),
 					(field) -> doWithField(field, testInstance, marshaller));
 		}
 
-		protected void doWithField(Field field, Object test,
-				ObjectFactory<M> marshaller) {
+		protected void doWithField(Field field, Object test, ObjectFactory<M> marshaller) {
 			if (this.testerClass.isAssignableFrom(field.getType())) {
 				ReflectionUtils.makeAccessible(field);
 				Object existingValue = ReflectionUtils.getField(field, test);
@@ -391,12 +397,11 @@ public abstract class AbstractJsonMarshalTester<T> {
 
 		private void setupField(Field field, Object test, ObjectFactory<M> marshaller) {
 			ResolvableType type = ResolvableType.forField(field).getGeneric();
-			ReflectionUtils.setField(field, test,
-					createTester(test.getClass(), type, marshaller.getObject()));
+			ReflectionUtils.setField(field, test, createTester(test.getClass(), type, marshaller.getObject()));
 		}
 
-		protected abstract AbstractJsonMarshalTester<Object> createTester(
-				Class<?> resourceLoadClass, ResolvableType type, M marshaller);
+		protected abstract AbstractJsonMarshalTester<Object> createTester(Class<?> resourceLoadClass,
+				ResolvableType type, M marshaller);
 
 	}
 

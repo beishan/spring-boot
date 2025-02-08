@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,15 +16,16 @@
 
 package org.springframework.boot.autoconfigure.transaction.jta;
 
-import org.springframework.boot.autoconfigure.AutoConfigureBefore;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.jdbc.XADataSourceAutoConfiguration;
 import org.springframework.boot.autoconfigure.jms.activemq.ActiveMQAutoConfiguration;
 import org.springframework.boot.autoconfigure.jms.artemis.ArtemisAutoConfiguration;
 import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.autoconfigure.transaction.TransactionAutoConfiguration;
+import org.springframework.boot.autoconfigure.transaction.TransactionManagerCustomizationAutoConfiguration;
 import org.springframework.context.annotation.Import;
 
 /**
@@ -32,16 +33,15 @@ import org.springframework.context.annotation.Import;
  *
  * @author Josh Long
  * @author Phillip Webb
+ * @author Nishant Raut
  * @since 1.2.0
  */
-@ConditionalOnClass(javax.transaction.Transaction.class)
-@ConditionalOnProperty(prefix = "spring.jta", value = "enabled", matchIfMissing = true)
-@AutoConfigureBefore({ XADataSourceAutoConfiguration.class,
-		ActiveMQAutoConfiguration.class, ArtemisAutoConfiguration.class,
-		HibernateJpaAutoConfiguration.class })
-@Import({ JndiJtaConfiguration.class, BitronixJtaConfiguration.class,
-		AtomikosJtaConfiguration.class, NarayanaJtaConfiguration.class })
-@EnableConfigurationProperties(JtaProperties.class)
+@AutoConfiguration(before = { XADataSourceAutoConfiguration.class, ActiveMQAutoConfiguration.class,
+		ArtemisAutoConfiguration.class, HibernateJpaAutoConfiguration.class, TransactionAutoConfiguration.class,
+		TransactionManagerCustomizationAutoConfiguration.class })
+@ConditionalOnClass(jakarta.transaction.Transaction.class)
+@ConditionalOnBooleanProperty(name = "spring.jta.enabled", matchIfMissing = true)
+@Import(JndiJtaConfiguration.class)
 public class JtaAutoConfiguration {
 
 }

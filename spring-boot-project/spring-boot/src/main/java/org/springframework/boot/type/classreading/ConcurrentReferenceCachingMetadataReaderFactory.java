@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -36,10 +36,11 @@ import org.springframework.util.ConcurrentReferenceHashMap;
  * @since 1.4.0
  * @see CachingMetadataReaderFactory
  */
-public class ConcurrentReferenceCachingMetadataReaderFactory
-		extends SimpleMetadataReaderFactory {
+public class ConcurrentReferenceCachingMetadataReaderFactory extends SimpleMetadataReaderFactory {
 
-	private final Map<Resource, MetadataReader> cache = new ConcurrentReferenceHashMap<>();
+	private final Map<String, MetadataReader> classNameCache = new ConcurrentReferenceHashMap<>();
+
+	private final Map<Resource, MetadataReader> resourceCache = new ConcurrentReferenceHashMap<>();
 
 	/**
 	 * Create a new {@link ConcurrentReferenceCachingMetadataReaderFactory} instance for
@@ -54,8 +55,7 @@ public class ConcurrentReferenceCachingMetadataReaderFactory
 	 * @param resourceLoader the Spring ResourceLoader to use (also determines the
 	 * ClassLoader to use)
 	 */
-	public ConcurrentReferenceCachingMetadataReaderFactory(
-			ResourceLoader resourceLoader) {
+	public ConcurrentReferenceCachingMetadataReaderFactory(ResourceLoader resourceLoader) {
 		super(resourceLoader);
 	}
 
@@ -69,11 +69,21 @@ public class ConcurrentReferenceCachingMetadataReaderFactory
 	}
 
 	@Override
+	public MetadataReader getMetadataReader(String className) throws IOException {
+		MetadataReader metadataReader = this.classNameCache.get(className);
+		if (metadataReader == null) {
+			metadataReader = super.getMetadataReader(className);
+			this.classNameCache.put(className, metadataReader);
+		}
+		return metadataReader;
+	}
+
+	@Override
 	public MetadataReader getMetadataReader(Resource resource) throws IOException {
-		MetadataReader metadataReader = this.cache.get(resource);
+		MetadataReader metadataReader = this.resourceCache.get(resource);
 		if (metadataReader == null) {
 			metadataReader = createMetadataReader(resource);
-			this.cache.put(resource, metadataReader);
+			this.resourceCache.put(resource, metadataReader);
 		}
 		return metadataReader;
 	}
@@ -92,7 +102,8 @@ public class ConcurrentReferenceCachingMetadataReaderFactory
 	 * Clear the entire MetadataReader cache, removing all cached class metadata.
 	 */
 	public void clearCache() {
-		this.cache.clear();
+		this.classNameCache.clear();
+		this.resourceCache.clear();
 	}
 
 }

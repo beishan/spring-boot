@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -43,15 +43,14 @@ public class MockClientHttpRequestFactory implements ClientHttpRequestFactory {
 
 	private static final byte[] NO_DATA = {};
 
-	private AtomicLong seq = new AtomicLong();
+	private final AtomicLong seq = new AtomicLong();
 
-	private Deque<Object> responses = new ArrayDeque<>();
+	private final Deque<Object> responses = new ArrayDeque<>();
 
-	private List<MockClientHttpRequest> executedRequests = new ArrayList<>();
+	private final List<MockClientHttpRequest> executedRequests = new ArrayList<>();
 
 	@Override
-	public ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod)
-			throws IOException {
+	public ClientHttpRequest createRequest(URI uri, HttpMethod httpMethod) throws IOException {
 		return new MockRequest(uri, httpMethod);
 	}
 
@@ -91,14 +90,13 @@ public class MockClientHttpRequestFactory implements ClientHttpRequestFactory {
 		protected ClientHttpResponse executeInternal() throws IOException {
 			MockClientHttpRequestFactory.this.executedRequests.add(this);
 			Object response = MockClientHttpRequestFactory.this.responses.pollFirst();
-			if (response instanceof IOException) {
-				throw (IOException) response;
+			if (response instanceof IOException ioException) {
+				throw ioException;
 			}
 			if (response == null) {
 				response = new Response(0, null, HttpStatus.GONE);
 			}
-			return ((Response) response)
-					.asHttpResponse(MockClientHttpRequestFactory.this.seq);
+			return ((Response) response).asHttpResponse(MockClientHttpRequestFactory.this.seq);
 		}
 
 	}
@@ -117,16 +115,14 @@ public class MockClientHttpRequestFactory implements ClientHttpRequestFactory {
 			this.status = status;
 		}
 
-		public ClientHttpResponse asHttpResponse(AtomicLong seq) {
+		ClientHttpResponse asHttpResponse(AtomicLong seq) {
 			MockClientHttpResponse httpResponse = new MockClientHttpResponse(
-					this.payload == null ? NO_DATA : this.payload, this.status);
+					(this.payload != null) ? this.payload : NO_DATA, this.status);
 			waitForDelay();
 			if (this.payload != null) {
 				httpResponse.getHeaders().setContentLength(this.payload.length);
-				httpResponse.getHeaders()
-						.setContentType(MediaType.APPLICATION_OCTET_STREAM);
-				httpResponse.getHeaders().add("x-seq",
-						Long.toString(seq.incrementAndGet()));
+				httpResponse.getHeaders().setContentType(MediaType.APPLICATION_OCTET_STREAM);
+				httpResponse.getHeaders().add("x-seq", Long.toString(seq.incrementAndGet()));
 			}
 			return httpResponse;
 		}

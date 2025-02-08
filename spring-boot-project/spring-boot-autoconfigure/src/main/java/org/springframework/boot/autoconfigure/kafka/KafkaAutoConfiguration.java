@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,16 +17,27 @@
 package org.springframework.boot.autoconfigure.kafka;
 
 import java.io.IOException;
+import java.time.Duration;
+import java.util.Map;
+
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.producer.ProducerConfig;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnSingleCandidate;
 import org.springframework.boot.autoconfigure.kafka.KafkaProperties.Jaas;
+import org.springframework.boot.autoconfigure.kafka.KafkaProperties.Retry.Topic.Backoff;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.context.properties.PropertyMapper;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
@@ -34,11 +45,15 @@ import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaAdmin;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
+import org.springframework.kafka.retrytopic.RetryTopicConfiguration;
+import org.springframework.kafka.retrytopic.RetryTopicConfigurationBuilder;
 import org.springframework.kafka.security.jaas.KafkaJaasLoginModuleInitializer;
 import org.springframework.kafka.support.LoggingProducerListener;
 import org.springframework.kafka.support.ProducerListener;
 import org.springframework.kafka.support.converter.RecordMessageConverter;
 import org.springframework.kafka.transaction.KafkaTransactionManager;
+import org.springframework.retry.backoff.BackOffPolicyBuilder;
+import org.springframework.retry.backoff.SleepingBackOffPolicy;
 
 /**
  * {@link EnableAutoConfiguration Auto-configuration} for Apache Kafka.
@@ -47,75 +62,88 @@ import org.springframework.kafka.transaction.KafkaTransactionManager;
  * @author Stephane Nicoll
  * @author Eddú Meléndez
  * @author Nakul Mishra
+ * @author Tomaz Fernandes
+ * @author Moritz Halbritter
+ * @author Andy Wilkinson
+ * @author Phillip Webb
+ * @author Andy Wilkinson
+ * @author Scott Frederick
  * @since 1.5.0
  */
-@Configuration
+@AutoConfiguration
 @ConditionalOnClass(KafkaTemplate.class)
 @EnableConfigurationProperties(KafkaProperties.class)
-@Import(KafkaAnnotationDrivenConfiguration.class)
+@Import({ KafkaAnnotationDrivenConfiguration.class, KafkaStreamsAnnotationDrivenConfiguration.class })
 public class KafkaAutoConfiguration {
 
 	private final KafkaProperties properties;
 
-	private final RecordMessageConverter messageConverter;
-
-	public KafkaAutoConfiguration(KafkaProperties properties,
-			ObjectProvider<RecordMessageConverter> messageConverter) {
+	KafkaAutoConfiguration(KafkaProperties properties) {
 		this.properties = properties;
-		this.messageConverter = messageConverter.getIfUnique();
+	}
+
+	@Bean
+	@ConditionalOnMissingBean(KafkaConnectionDetails.class)
+	PropertiesKafkaConnectionDetails kafkaConnectionDetails(KafkaProperties properties) {
+		return new PropertiesKafkaConnectionDetails(properties);
 	}
 
 	@Bean
 	@ConditionalOnMissingBean(KafkaTemplate.class)
-	public KafkaTemplate<?, ?> kafkaTemplate(
-			ProducerFactory<Object, Object> kafkaProducerFactory,
-			ProducerListener<Object, Object> kafkaProducerListener) {
-		KafkaTemplate<Object, Object> kafkaTemplate = new KafkaTemplate<>(
-				kafkaProducerFactory);
-		if (this.messageConverter != null) {
-			kafkaTemplate.setMessageConverter(this.messageConverter);
-		}
-		kafkaTemplate.setProducerListener(kafkaProducerListener);
-		kafkaTemplate.setDefaultTopic(this.properties.getTemplate().getDefaultTopic());
+	public KafkaTemplate<?, ?> kafkaTemplate(ProducerFactory<Object, Object> kafkaProducerFactory,
+			ProducerListener<Object, Object> kafkaProducerListener,
+			ObjectProvider<RecordMessageConverter> messageConverter) {
+		PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
+		KafkaTemplate<Object, Object> kafkaTemplate = new KafkaTemplate<>(kafkaProducerFactory);
+		messageConverter.ifUnique(kafkaTemplate::setMessageConverter);
+		map.from(kafkaProducerListener).to(kafkaTemplate::setProducerListener);
+		map.from(this.properties.getTemplate().getDefaultTopic()).to(kafkaTemplate::setDefaultTopic);
+		map.from(this.properties.getTemplate().getTransactionIdPrefix()).to(kafkaTemplate::setTransactionIdPrefix);
+		map.from(this.properties.getTemplate().isObservationEnabled()).to(kafkaTemplate::setObservationEnabled);
 		return kafkaTemplate;
 	}
 
 	@Bean
 	@ConditionalOnMissingBean(ProducerListener.class)
-	public ProducerListener<Object, Object> kafkaProducerListener() {
+	public LoggingProducerListener<Object, Object> kafkaProducerListener() {
 		return new LoggingProducerListener<>();
 	}
 
 	@Bean
 	@ConditionalOnMissingBean(ConsumerFactory.class)
-	public ConsumerFactory<?, ?> kafkaConsumerFactory() {
-		return new DefaultKafkaConsumerFactory<>(
-				this.properties.buildConsumerProperties());
+	public DefaultKafkaConsumerFactory<?, ?> kafkaConsumerFactory(KafkaConnectionDetails connectionDetails,
+			ObjectProvider<DefaultKafkaConsumerFactoryCustomizer> customizers, ObjectProvider<SslBundles> sslBundles) {
+		Map<String, Object> properties = this.properties.buildConsumerProperties(sslBundles.getIfAvailable());
+		applyKafkaConnectionDetailsForConsumer(properties, connectionDetails);
+		DefaultKafkaConsumerFactory<Object, Object> factory = new DefaultKafkaConsumerFactory<>(properties);
+		customizers.orderedStream().forEach((customizer) -> customizer.customize(factory));
+		return factory;
 	}
 
 	@Bean
 	@ConditionalOnMissingBean(ProducerFactory.class)
-	public ProducerFactory<?, ?> kafkaProducerFactory() {
-		DefaultKafkaProducerFactory<?, ?> factory = new DefaultKafkaProducerFactory<>(
-				this.properties.buildProducerProperties());
-		String transactionIdPrefix = this.properties.getProducer()
-				.getTransactionIdPrefix();
+	public DefaultKafkaProducerFactory<?, ?> kafkaProducerFactory(KafkaConnectionDetails connectionDetails,
+			ObjectProvider<DefaultKafkaProducerFactoryCustomizer> customizers, ObjectProvider<SslBundles> sslBundles) {
+		Map<String, Object> properties = this.properties.buildProducerProperties(sslBundles.getIfAvailable());
+		applyKafkaConnectionDetailsForProducer(properties, connectionDetails);
+		DefaultKafkaProducerFactory<?, ?> factory = new DefaultKafkaProducerFactory<>(properties);
+		String transactionIdPrefix = this.properties.getProducer().getTransactionIdPrefix();
 		if (transactionIdPrefix != null) {
 			factory.setTransactionIdPrefix(transactionIdPrefix);
 		}
+		customizers.orderedStream().forEach((customizer) -> customizer.customize(factory));
 		return factory;
 	}
 
 	@Bean
 	@ConditionalOnProperty(name = "spring.kafka.producer.transaction-id-prefix")
 	@ConditionalOnMissingBean
-	public KafkaTransactionManager<?, ?> kafkaTransactionManager(
-			ProducerFactory<?, ?> producerFactory) {
+	public KafkaTransactionManager<?, ?> kafkaTransactionManager(ProducerFactory<?, ?> producerFactory) {
 		return new KafkaTransactionManager<>(producerFactory);
 	}
 
 	@Bean
-	@ConditionalOnProperty(name = "spring.kafka.jaas.enabled")
+	@ConditionalOnBooleanProperty("spring.kafka.jaas.enabled")
 	@ConditionalOnMissingBean
 	public KafkaJaasLoginModuleInitializer kafkaJaasInitializer() throws IOException {
 		KafkaJaasLoginModuleInitializer jaas = new KafkaJaasLoginModuleInitializer();
@@ -131,11 +159,76 @@ public class KafkaAutoConfiguration {
 	}
 
 	@Bean
-	@ConditionalOnMissingBean(KafkaAdmin.class)
-	public KafkaAdmin kafkaAdmin() {
-		KafkaAdmin kafkaAdmin = new KafkaAdmin(this.properties.buildAdminProperties());
-		kafkaAdmin.setFatalIfBrokerNotAvailable(this.properties.getAdmin().isFailFast());
+	@ConditionalOnMissingBean
+	public KafkaAdmin kafkaAdmin(KafkaConnectionDetails connectionDetails, ObjectProvider<SslBundles> sslBundles) {
+		Map<String, Object> properties = this.properties.buildAdminProperties(sslBundles.getIfAvailable());
+		applyKafkaConnectionDetailsForAdmin(properties, connectionDetails);
+		KafkaAdmin kafkaAdmin = new KafkaAdmin(properties);
+		KafkaProperties.Admin admin = this.properties.getAdmin();
+		if (admin.getCloseTimeout() != null) {
+			kafkaAdmin.setCloseTimeout((int) admin.getCloseTimeout().getSeconds());
+		}
+		if (admin.getOperationTimeout() != null) {
+			kafkaAdmin.setOperationTimeout((int) admin.getOperationTimeout().getSeconds());
+		}
+		kafkaAdmin.setFatalIfBrokerNotAvailable(admin.isFailFast());
+		kafkaAdmin.setModifyTopicConfigs(admin.isModifyTopicConfigs());
+		kafkaAdmin.setAutoCreate(admin.isAutoCreate());
 		return kafkaAdmin;
+	}
+
+	@Bean
+	@ConditionalOnBooleanProperty("spring.kafka.retry.topic.enabled")
+	@ConditionalOnSingleCandidate(KafkaTemplate.class)
+	public RetryTopicConfiguration kafkaRetryTopicConfiguration(KafkaTemplate<?, ?> kafkaTemplate) {
+		KafkaProperties.Retry.Topic retryTopic = this.properties.getRetry().getTopic();
+		RetryTopicConfigurationBuilder builder = RetryTopicConfigurationBuilder.newInstance()
+			.maxAttempts(retryTopic.getAttempts())
+			.useSingleTopicForSameIntervals()
+			.suffixTopicsWithIndexValues()
+			.doNotAutoCreateRetryTopics();
+		setBackOffPolicy(builder, retryTopic.getBackoff());
+		return builder.create(kafkaTemplate);
+	}
+
+	private void applyKafkaConnectionDetailsForConsumer(Map<String, Object> properties,
+			KafkaConnectionDetails connectionDetails) {
+		properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, connectionDetails.getConsumerBootstrapServers());
+		if (!(connectionDetails instanceof PropertiesKafkaConnectionDetails)) {
+			properties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "PLAINTEXT");
+		}
+	}
+
+	private void applyKafkaConnectionDetailsForProducer(Map<String, Object> properties,
+			KafkaConnectionDetails connectionDetails) {
+		properties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, connectionDetails.getProducerBootstrapServers());
+		if (!(connectionDetails instanceof PropertiesKafkaConnectionDetails)) {
+			properties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "PLAINTEXT");
+		}
+	}
+
+	private void applyKafkaConnectionDetailsForAdmin(Map<String, Object> properties,
+			KafkaConnectionDetails connectionDetails) {
+		properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, connectionDetails.getAdminBootstrapServers());
+		if (!(connectionDetails instanceof PropertiesKafkaConnectionDetails)) {
+			properties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "PLAINTEXT");
+		}
+	}
+
+	private static void setBackOffPolicy(RetryTopicConfigurationBuilder builder, Backoff retryTopicBackoff) {
+		long delay = (retryTopicBackoff.getDelay() != null) ? retryTopicBackoff.getDelay().toMillis() : 0;
+		if (delay > 0) {
+			PropertyMapper map = PropertyMapper.get().alwaysApplyingWhenNonNull();
+			BackOffPolicyBuilder backOffPolicy = BackOffPolicyBuilder.newBuilder();
+			map.from(delay).to(backOffPolicy::delay);
+			map.from(retryTopicBackoff.getMaxDelay()).as(Duration::toMillis).to(backOffPolicy::maxDelay);
+			map.from(retryTopicBackoff.getMultiplier()).to(backOffPolicy::multiplier);
+			map.from(retryTopicBackoff.isRandom()).to(backOffPolicy::random);
+			builder.customBackoff((SleepingBackOffPolicy<?>) backOffPolicy.build());
+		}
+		else {
+			builder.noBackoff();
+		}
 	}
 
 }

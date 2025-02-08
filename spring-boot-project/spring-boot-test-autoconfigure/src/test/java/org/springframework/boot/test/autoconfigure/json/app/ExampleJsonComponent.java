@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +17,8 @@
 package org.springframework.boot.test.autoconfigure.json.app;
 
 import java.io.IOException;
+import java.util.Date;
+import java.util.UUID;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
@@ -31,31 +33,35 @@ import org.springframework.boot.jackson.JsonObjectSerializer;
 import org.springframework.boot.test.autoconfigure.json.JsonTest;
 
 /**
- * Example {@link JsonComponent} for use with {@link JsonTest @JsonTest} tests.
+ * Example {@link JsonComponent @JsonComponent} for use with {@link JsonTest @JsonTest}
+ * tests.
  *
  * @author Phillip Webb
  */
 @JsonComponent
 public class ExampleJsonComponent {
 
-	public static class Serializer extends JsonObjectSerializer<ExampleCustomObject> {
+	static class Serializer extends JsonObjectSerializer<ExampleCustomObject> {
 
 		@Override
-		protected void serializeObject(ExampleCustomObject value, JsonGenerator jgen,
-				SerializerProvider provider) throws IOException {
-			jgen.writeStringField("value", value.toString());
+		protected void serializeObject(ExampleCustomObject value, JsonGenerator jgen, SerializerProvider provider)
+				throws IOException {
+			jgen.writeStringField("value", value.value());
+			jgen.writeNumberField("date", value.date().getTime());
+			jgen.writeStringField("uuid", value.uuid().toString());
 		}
 
 	}
 
-	public static class Deserializer extends JsonObjectDeserializer<ExampleCustomObject> {
+	static class Deserializer extends JsonObjectDeserializer<ExampleCustomObject> {
 
 		@Override
-		protected ExampleCustomObject deserializeObject(JsonParser jsonParser,
-				DeserializationContext context, ObjectCodec codec, JsonNode tree)
-				throws IOException {
-			return new ExampleCustomObject(
-					nullSafeValue(tree.get("value"), String.class));
+		protected ExampleCustomObject deserializeObject(JsonParser jsonParser, DeserializationContext context,
+				ObjectCodec codec, JsonNode tree) throws IOException {
+			String value = nullSafeValue(tree.get("value"), String.class);
+			Date date = nullSafeValue(tree.get("date"), Long.class, Date::new);
+			UUID uuid = nullSafeValue(tree.get("uuid"), String.class, UUID::fromString);
+			return new ExampleCustomObject(value, date, uuid);
 		}
 
 	}

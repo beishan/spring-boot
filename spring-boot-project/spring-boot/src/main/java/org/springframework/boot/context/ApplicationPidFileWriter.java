@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -61,8 +61,7 @@ import org.springframework.util.Assert;
  * @author Madhura Bhave
  * @since 2.0.0
  */
-public class ApplicationPidFileWriter
-		implements ApplicationListener<SpringApplicationEvent>, Ordered {
+public class ApplicationPidFileWriter implements ApplicationListener<SpringApplicationEvent>, Ordered {
 
 	private static final Log logger = LogFactory.getLog(ApplicationPidFileWriter.class);
 
@@ -87,7 +86,7 @@ public class ApplicationPidFileWriter
 		FAIL_ON_WRITE_ERROR_PROPERTIES = Collections.unmodifiableList(properties);
 	}
 
-	private static final AtomicBoolean created = new AtomicBoolean(false);
+	private static final AtomicBoolean created = new AtomicBoolean();
 
 	private int order = Ordered.HIGHEST_PRECEDENCE + 13;
 
@@ -116,7 +115,7 @@ public class ApplicationPidFileWriter
 	 * @param file the file containing pid
 	 */
 	public ApplicationPidFileWriter(File file) {
-		Assert.notNull(file, "File must not be null");
+		Assert.notNull(file, "'file' must not be null");
 		this.file = file;
 	}
 
@@ -128,16 +127,14 @@ public class ApplicationPidFileWriter
 	 * {@link Environment}.
 	 * @param triggerEventType the trigger event type
 	 */
-	public void setTriggerEventType(
-			Class<? extends SpringApplicationEvent> triggerEventType) {
-		Assert.notNull(triggerEventType, "Trigger event type must not be null");
+	public void setTriggerEventType(Class<? extends SpringApplicationEvent> triggerEventType) {
+		Assert.notNull(triggerEventType, "'triggerEventType' must not be null");
 		this.triggerEventType = triggerEventType;
 	}
 
 	@Override
 	public void onApplicationEvent(SpringApplicationEvent event) {
-		if (this.triggerEventType.isInstance(event)
-				&& created.compareAndSet(false, true)) {
+		if (this.triggerEventType.isInstance(event) && created.compareAndSet(false, true)) {
 			try {
 				writePidFile(event);
 			}
@@ -163,7 +160,7 @@ public class ApplicationPidFileWriter
 
 	private boolean failOnWriteError(SpringApplicationEvent event) {
 		String value = getProperty(event, FAIL_ON_WRITE_ERROR_PROPERTIES);
-		return (value == null ? false : Boolean.parseBoolean(value));
+		return Boolean.parseBoolean(value);
 	}
 
 	private String getProperty(SpringApplicationEvent event, List<Property> candidates) {
@@ -225,16 +222,14 @@ public class ApplicationPidFileWriter
 		}
 
 		private Environment getEnvironment(SpringApplicationEvent event) {
-			if (event instanceof ApplicationEnvironmentPreparedEvent) {
-				return ((ApplicationEnvironmentPreparedEvent) event).getEnvironment();
+			if (event instanceof ApplicationEnvironmentPreparedEvent environmentPreparedEvent) {
+				return environmentPreparedEvent.getEnvironment();
 			}
-			if (event instanceof ApplicationPreparedEvent) {
-				return ((ApplicationPreparedEvent) event).getApplicationContext()
-						.getEnvironment();
+			if (event instanceof ApplicationPreparedEvent preparedEvent) {
+				return preparedEvent.getApplicationContext().getEnvironment();
 			}
-			if (event instanceof ApplicationReadyEvent) {
-				return ((ApplicationReadyEvent) event).getApplicationContext()
-						.getEnvironment();
+			if (event instanceof ApplicationReadyEvent readyEvent) {
+				return readyEvent.getApplicationContext().getEnvironment();
 			}
 			return null;
 		}
@@ -249,8 +244,7 @@ public class ApplicationPidFileWriter
 		private final String[] properties;
 
 		SystemProperty(String name) {
-			this.properties = new String[] { name.toUpperCase(Locale.ENGLISH),
-					name.toLowerCase(Locale.ENGLISH) };
+			this.properties = new String[] { name.toUpperCase(Locale.ENGLISH), name.toLowerCase(Locale.ENGLISH) };
 		}
 
 		@Override

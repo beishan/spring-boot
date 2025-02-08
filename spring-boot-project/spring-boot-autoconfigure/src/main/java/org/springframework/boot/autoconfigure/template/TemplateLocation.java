@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -34,7 +34,7 @@ public class TemplateLocation {
 	private final String path;
 
 	public TemplateLocation(String path) {
-		Assert.notNull(path, "Path must not be null");
+		Assert.notNull(path, "'path' must not be null");
 		this.path = path;
 	}
 
@@ -45,7 +45,7 @@ public class TemplateLocation {
 	 * @return {@code true} if the location exists.
 	 */
 	public boolean exists(ResourcePatternResolver resolver) {
-		Assert.notNull(resolver, "Resolver must not be null");
+		Assert.notNull(resolver, "'resolver' must not be null");
 		if (resolver.getResource(this.path).exists()) {
 			return true;
 		}

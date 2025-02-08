@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,11 +17,10 @@
 package org.springframework.boot.test.web.htmlunit;
 
 import java.io.IOException;
-import java.net.MalformedURLException;
 
-import com.gargoylesoftware.htmlunit.FailingHttpStatusCodeException;
-import com.gargoylesoftware.htmlunit.Page;
-import com.gargoylesoftware.htmlunit.WebClient;
+import org.htmlunit.FailingHttpStatusCodeException;
+import org.htmlunit.Page;
+import org.htmlunit.WebClient;
 
 import org.springframework.core.env.Environment;
 import org.springframework.util.Assert;
@@ -38,13 +37,12 @@ public class LocalHostWebClient extends WebClient {
 	private final Environment environment;
 
 	public LocalHostWebClient(Environment environment) {
-		Assert.notNull(environment, "Environment must not be null");
+		Assert.notNull(environment, "'environment' must not be null");
 		this.environment = environment;
 	}
 
 	@Override
-	public <P extends Page> P getPage(String url)
-			throws IOException, FailingHttpStatusCodeException, MalformedURLException {
+	public <P extends Page> P getPage(String url) throws IOException, FailingHttpStatusCodeException {
 		if (url.startsWith("/")) {
 			String port = this.environment.getProperty("local.server.port", "8080");
 			url = "http://localhost:" + port + url;

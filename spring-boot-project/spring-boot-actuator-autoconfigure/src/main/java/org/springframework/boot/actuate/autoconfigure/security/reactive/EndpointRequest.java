@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -31,15 +31,23 @@ import reactor.core.publisher.Mono;
 
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.boot.actuate.autoconfigure.endpoint.web.WebEndpointProperties;
+import org.springframework.boot.actuate.autoconfigure.web.server.ManagementPortType;
+import org.springframework.boot.actuate.endpoint.EndpointId;
 import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.web.PathMappedEndpoints;
+import org.springframework.boot.actuate.endpoint.web.WebServerNamespace;
 import org.springframework.boot.security.reactive.ApplicationContextServerWebExchangeMatcher;
-import org.springframework.core.annotation.AnnotationUtils;
+import org.springframework.context.ApplicationContext;
+import org.springframework.core.annotation.MergedAnnotation;
+import org.springframework.core.annotation.MergedAnnotations;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.web.server.util.matcher.OrServerWebExchangeMatcher;
 import org.springframework.security.web.server.util.matcher.PathPatternParserServerWebExchangeMatcher;
 import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatcher;
 import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatcher.MatchResult;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.util.Assert;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ServerWebExchange;
 
@@ -48,12 +56,13 @@ import org.springframework.web.server.ServerWebExchange;
  * endpoint locations.
  *
  * @author Madhura Bhave
+ * @author Phillip Webb
+ * @author Chris Bono
  * @since 2.0.0
  */
 public final class EndpointRequest {
 
-	private static final ServerWebExchangeMatcher EMPTY_MATCHER = (request) -> MatchResult
-			.notMatch();
+	private static final ServerWebExchangeMatcher EMPTY_MATCHER = (request) -> MatchResult.notMatch();
 
 	private EndpointRequest() {
 	}
@@ -113,104 +122,119 @@ public final class EndpointRequest {
 	}
 
 	/**
-	 * The {@link ServerWebExchangeMatcher} used to match against {@link Endpoint actuator
-	 * endpoints}.
+	 * Returns a matcher that includes additional paths under a {@link WebServerNamespace}
+	 * for the specified {@link Endpoint actuator endpoints}. For example:
+	 * <pre class="code">
+	 * EndpointRequest.toAdditionalPaths(WebServerNamespace.SERVER, "health")
+	 * </pre>
+	 * @param webServerNamespace the web server namespace
+	 * @param endpoints the endpoints to include
+	 * @return the configured {@link RequestMatcher}
+	 * @since 3.4.0
 	 */
-	public static final class EndpointServerWebExchangeMatcher
-			extends ApplicationContextServerWebExchangeMatcher<PathMappedEndpoints> {
+	public static AdditionalPathsEndpointServerWebExchangeMatcher toAdditionalPaths(
+			WebServerNamespace webServerNamespace, Class<?>... endpoints) {
+		return new AdditionalPathsEndpointServerWebExchangeMatcher(webServerNamespace, endpoints);
+	}
 
-		private final List<Object> includes;
+	/**
+	 * Returns a matcher that includes additional paths under a {@link WebServerNamespace}
+	 * for the specified {@link Endpoint actuator endpoints}. For example:
+	 * <pre class="code">
+	 * EndpointRequest.toAdditionalPaths(WebServerNamespace.SERVER, HealthEndpoint.class)
+	 * </pre>
+	 * @param webServerNamespace the web server namespace
+	 * @param endpoints the endpoints to include
+	 * @return the configured {@link RequestMatcher}
+	 * @since 3.4.0
+	 */
+	public static AdditionalPathsEndpointServerWebExchangeMatcher toAdditionalPaths(
+			WebServerNamespace webServerNamespace, String... endpoints) {
+		return new AdditionalPathsEndpointServerWebExchangeMatcher(webServerNamespace, endpoints);
+	}
 
-		private final List<Object> excludes;
+	/**
+	 * Base class for supported request matchers.
+	 */
+	private abstract static class AbstractWebExchangeMatcher<C> extends ApplicationContextServerWebExchangeMatcher<C> {
 
-		private final boolean includeLinks;
+		private volatile ServerWebExchangeMatcher delegate;
 
-		private ServerWebExchangeMatcher delegate;
+		private volatile ManagementPortType managementPortType;
 
-		private EndpointServerWebExchangeMatcher(boolean includeLinks) {
-			this(Collections.emptyList(), Collections.emptyList(), includeLinks);
-		}
-
-		private EndpointServerWebExchangeMatcher(Class<?>[] endpoints,
-				boolean includeLinks) {
-			this(Arrays.asList((Object[]) endpoints), Collections.emptyList(),
-					includeLinks);
-		}
-
-		private EndpointServerWebExchangeMatcher(String[] endpoints,
-				boolean includeLinks) {
-			this(Arrays.asList((Object[]) endpoints), Collections.emptyList(),
-					includeLinks);
-		}
-
-		private EndpointServerWebExchangeMatcher(List<Object> includes,
-				List<Object> excludes, boolean includeLinks) {
-			super(PathMappedEndpoints.class);
-			this.includes = includes;
-			this.excludes = excludes;
-			this.includeLinks = includeLinks;
-		}
-
-		public EndpointServerWebExchangeMatcher excluding(Class<?>... endpoints) {
-			List<Object> excludes = new ArrayList<>(this.excludes);
-			excludes.addAll(Arrays.asList((Object[]) endpoints));
-			return new EndpointServerWebExchangeMatcher(this.includes, excludes,
-					this.includeLinks);
-		}
-
-		public EndpointServerWebExchangeMatcher excluding(String... endpoints) {
-			List<Object> excludes = new ArrayList<>(this.excludes);
-			excludes.addAll(Arrays.asList((Object[]) endpoints));
-			return new EndpointServerWebExchangeMatcher(this.includes, excludes,
-					this.includeLinks);
-		}
-
-		public EndpointServerWebExchangeMatcher excludingLinks() {
-			return new EndpointServerWebExchangeMatcher(this.includes, this.excludes,
-					false);
+		AbstractWebExchangeMatcher(Class<? extends C> contextClass) {
+			super(contextClass);
 		}
 
 		@Override
-		protected void initialized(Supplier<PathMappedEndpoints> pathMappedEndpoints) {
-			this.delegate = createDelegate(pathMappedEndpoints);
+		protected void initialized(Supplier<C> supplier) {
+			this.delegate = createDelegate(supplier);
 		}
 
-		private ServerWebExchangeMatcher createDelegate(
-				Supplier<PathMappedEndpoints> pathMappedEndpoints) {
+		private ServerWebExchangeMatcher createDelegate(Supplier<C> context) {
 			try {
-				return createDelegate(pathMappedEndpoints.get());
+				return createDelegate(context.get());
 			}
 			catch (NoSuchBeanDefinitionException ex) {
 				return EMPTY_MATCHER;
 			}
 		}
 
-		private ServerWebExchangeMatcher createDelegate(
-				PathMappedEndpoints pathMappedEndpoints) {
-			Set<String> paths = new LinkedHashSet<>();
-			if (this.includes.isEmpty()) {
-				paths.addAll(pathMappedEndpoints.getAllPaths());
-			}
-			streamPaths(this.includes, pathMappedEndpoints).forEach(paths::add);
-			streamPaths(this.excludes, pathMappedEndpoints).forEach(paths::remove);
-			List<ServerWebExchangeMatcher> delegateMatchers = getDelegateMatchers(paths);
-			if (this.includeLinks
-					&& StringUtils.hasText(pathMappedEndpoints.getBasePath())) {
-				delegateMatchers.add(new PathPatternParserServerWebExchangeMatcher(
-						pathMappedEndpoints.getBasePath()));
-			}
-			return new OrServerWebExchangeMatcher(delegateMatchers);
+		protected abstract ServerWebExchangeMatcher createDelegate(C context);
+
+		protected final List<ServerWebExchangeMatcher> getDelegateMatchers(Set<String> paths, HttpMethod httpMethod) {
+			return paths.stream()
+				.map((path) -> getDelegateMatcher(path, httpMethod))
+				.collect(Collectors.toCollection(ArrayList::new));
 		}
 
-		private Stream<String> streamPaths(List<Object> source,
-				PathMappedEndpoints pathMappedEndpoints) {
-			return source.stream().filter(Objects::nonNull).map(this::getEndpointId)
-					.map(pathMappedEndpoints::getPath);
+		private PathPatternParserServerWebExchangeMatcher getDelegateMatcher(String path, HttpMethod httpMethod) {
+			return new PathPatternParserServerWebExchangeMatcher(path + "/**", httpMethod);
 		}
 
-		private String getEndpointId(Object source) {
-			if (source instanceof String) {
-				return (String) source;
+		@Override
+		protected Mono<MatchResult> matches(ServerWebExchange exchange, Supplier<C> context) {
+			return this.delegate.matches(exchange);
+		}
+
+		@Override
+		protected boolean ignoreApplicationContext(ApplicationContext applicationContext) {
+			ManagementPortType managementPortType = this.managementPortType;
+			if (managementPortType == null) {
+				managementPortType = ManagementPortType.get(applicationContext.getEnvironment());
+				this.managementPortType = managementPortType;
+			}
+			return ignoreApplicationContext(applicationContext, managementPortType);
+		}
+
+		protected boolean ignoreApplicationContext(ApplicationContext applicationContext,
+				ManagementPortType managementPortType) {
+			return managementPortType == ManagementPortType.DIFFERENT
+					&& !hasWebServerNamespace(applicationContext, WebServerNamespace.MANAGEMENT);
+		}
+
+		protected final boolean hasWebServerNamespace(ApplicationContext applicationContext,
+				WebServerNamespace webServerNamespace) {
+			if (applicationContext.getParent() == null) {
+				return WebServerNamespace.SERVER.equals(webServerNamespace);
+			}
+			String parentContextId = applicationContext.getParent().getId();
+			return applicationContext.getId().equals(parentContextId + ":" + webServerNamespace);
+		}
+
+		protected final String toString(List<Object> endpoints, String emptyValue) {
+			return (!endpoints.isEmpty()) ? endpoints.stream()
+				.map(this::getEndpointId)
+				.map(Object::toString)
+				.collect(Collectors.joining(", ", "[", "]")) : emptyValue;
+		}
+
+		protected final EndpointId getEndpointId(Object source) {
+			if (source instanceof EndpointId endpointId) {
+				return endpointId;
+			}
+			if (source instanceof String string) {
+				return EndpointId.of(string);
 			}
 			if (source instanceof Class) {
 				return getEndpointId((Class<?>) source);
@@ -218,57 +242,198 @@ public final class EndpointRequest {
 			throw new IllegalStateException("Unsupported source " + source);
 		}
 
-		private String getEndpointId(Class<?> source) {
-			Endpoint annotation = AnnotationUtils.findAnnotation(source, Endpoint.class);
-			Assert.state(annotation != null,
-					() -> "Class " + source + " is not annotated with @Endpoint");
-			return annotation.id();
-		}
-
-		private List<ServerWebExchangeMatcher> getDelegateMatchers(Set<String> paths) {
-			return paths.stream().map(
-					(path) -> new PathPatternParserServerWebExchangeMatcher(path + "/**"))
-					.collect(Collectors.toList());
-		}
-
-		@Override
-		protected Mono<MatchResult> matches(ServerWebExchange exchange,
-				Supplier<PathMappedEndpoints> context) {
-			return this.delegate.matches(exchange);
+		private EndpointId getEndpointId(Class<?> source) {
+			MergedAnnotation<Endpoint> annotation = MergedAnnotations.from(source).get(Endpoint.class);
+			Assert.state(annotation.isPresent(), () -> "Class " + source + " is not annotated with @Endpoint");
+			return EndpointId.of(annotation.getString("id"));
 		}
 
 	}
 
 	/**
-	 * The The {@link ServerWebExchangeMatcher} used to match against the links endpoint.
+	 * The {@link ServerWebExchangeMatcher} used to match against {@link Endpoint actuator
+	 * endpoints}.
 	 */
-	public static final class LinksServerWebExchangeMatcher
-			extends ApplicationContextServerWebExchangeMatcher<WebEndpointProperties> {
+	public static final class EndpointServerWebExchangeMatcher extends AbstractWebExchangeMatcher<PathMappedEndpoints> {
 
-		private ServerWebExchangeMatcher delegate;
+		private final List<Object> includes;
+
+		private final List<Object> excludes;
+
+		private final boolean includeLinks;
+
+		private final HttpMethod httpMethod;
+
+		private EndpointServerWebExchangeMatcher(boolean includeLinks) {
+			this(Collections.emptyList(), Collections.emptyList(), includeLinks, null);
+		}
+
+		private EndpointServerWebExchangeMatcher(Class<?>[] endpoints, boolean includeLinks) {
+			this(Arrays.asList((Object[]) endpoints), Collections.emptyList(), includeLinks, null);
+		}
+
+		private EndpointServerWebExchangeMatcher(String[] endpoints, boolean includeLinks) {
+			this(Arrays.asList((Object[]) endpoints), Collections.emptyList(), includeLinks, null);
+		}
+
+		private EndpointServerWebExchangeMatcher(List<Object> includes, List<Object> excludes, boolean includeLinks,
+				HttpMethod httpMethod) {
+			super(PathMappedEndpoints.class);
+			this.includes = includes;
+			this.excludes = excludes;
+			this.includeLinks = includeLinks;
+			this.httpMethod = httpMethod;
+		}
+
+		public EndpointServerWebExchangeMatcher excluding(Class<?>... endpoints) {
+			List<Object> excludes = new ArrayList<>(this.excludes);
+			excludes.addAll(Arrays.asList((Object[]) endpoints));
+			return new EndpointServerWebExchangeMatcher(this.includes, excludes, this.includeLinks, null);
+		}
+
+		public EndpointServerWebExchangeMatcher excluding(String... endpoints) {
+			List<Object> excludes = new ArrayList<>(this.excludes);
+			excludes.addAll(Arrays.asList((Object[]) endpoints));
+			return new EndpointServerWebExchangeMatcher(this.includes, excludes, this.includeLinks, null);
+		}
+
+		public EndpointServerWebExchangeMatcher excludingLinks() {
+			return new EndpointServerWebExchangeMatcher(this.includes, this.excludes, false, null);
+		}
+
+		/**
+		 * Restricts the matcher to only consider requests with a particular http method.
+		 * @param httpMethod the http method to include
+		 * @return a copy of the matcher further restricted to only match requests with
+		 * the specified http method
+		 */
+		public EndpointServerWebExchangeMatcher withHttpMethod(HttpMethod httpMethod) {
+			return new EndpointServerWebExchangeMatcher(this.includes, this.excludes, this.includeLinks, httpMethod);
+		}
+
+		@Override
+		protected ServerWebExchangeMatcher createDelegate(PathMappedEndpoints endpoints) {
+			Set<String> paths = new LinkedHashSet<>();
+			if (this.includes.isEmpty()) {
+				paths.addAll(endpoints.getAllPaths());
+			}
+			streamPaths(this.includes, endpoints).forEach(paths::add);
+			streamPaths(this.excludes, endpoints).forEach(paths::remove);
+			List<ServerWebExchangeMatcher> delegateMatchers = getDelegateMatchers(paths, this.httpMethod);
+			if (this.includeLinks && StringUtils.hasText(endpoints.getBasePath())) {
+				delegateMatchers.add(new LinksServerWebExchangeMatcher());
+			}
+			return new OrServerWebExchangeMatcher(delegateMatchers);
+		}
+
+		private Stream<String> streamPaths(List<Object> source, PathMappedEndpoints endpoints) {
+			return source.stream().filter(Objects::nonNull).map(this::getEndpointId).map(endpoints::getPath);
+		}
+
+		@Override
+		public String toString() {
+			return String.format("EndpointRequestMatcher includes=%s, excludes=%s, includeLinks=%s",
+					toString(this.includes, "[*]"), toString(this.excludes, "[]"), this.includeLinks);
+		}
+
+	}
+
+	/**
+	 * The {@link ServerWebExchangeMatcher} used to match against the links endpoint.
+	 */
+	public static final class LinksServerWebExchangeMatcher extends AbstractWebExchangeMatcher<WebEndpointProperties> {
 
 		private LinksServerWebExchangeMatcher() {
 			super(WebEndpointProperties.class);
 		}
 
 		@Override
-		protected void initialized(Supplier<WebEndpointProperties> properties) {
-			this.delegate = createDelegate(properties.get());
-		}
-
-		private ServerWebExchangeMatcher createDelegate(
-				WebEndpointProperties properties) {
+		protected ServerWebExchangeMatcher createDelegate(WebEndpointProperties properties) {
 			if (StringUtils.hasText(properties.getBasePath())) {
-				return new PathPatternParserServerWebExchangeMatcher(
-						properties.getBasePath());
+				return new OrServerWebExchangeMatcher(
+						new PathPatternParserServerWebExchangeMatcher(properties.getBasePath()),
+						new PathPatternParserServerWebExchangeMatcher(properties.getBasePath() + "/"));
 			}
 			return EMPTY_MATCHER;
 		}
 
 		@Override
-		protected Mono<MatchResult> matches(ServerWebExchange exchange,
-				Supplier<WebEndpointProperties> context) {
-			return this.delegate.matches(exchange);
+		public String toString() {
+			return String.format("LinksServerWebExchangeMatcher");
+		}
+
+	}
+
+	/**
+	 * The {@link ServerWebExchangeMatcher} used to match against additional paths for
+	 * {@link Endpoint actuator endpoints}.
+	 */
+	public static class AdditionalPathsEndpointServerWebExchangeMatcher
+			extends AbstractWebExchangeMatcher<PathMappedEndpoints> {
+
+		private final WebServerNamespace webServerNamespace;
+
+		private final List<Object> endpoints;
+
+		private final HttpMethod httpMethod;
+
+		AdditionalPathsEndpointServerWebExchangeMatcher(WebServerNamespace webServerNamespace, String... endpoints) {
+			this(webServerNamespace, Arrays.asList((Object[]) endpoints), null);
+		}
+
+		AdditionalPathsEndpointServerWebExchangeMatcher(WebServerNamespace webServerNamespace, Class<?>... endpoints) {
+			this(webServerNamespace, Arrays.asList((Object[]) endpoints), null);
+		}
+
+		private AdditionalPathsEndpointServerWebExchangeMatcher(WebServerNamespace webServerNamespace,
+				List<Object> endpoints, HttpMethod httpMethod) {
+			super(PathMappedEndpoints.class);
+			Assert.notNull(webServerNamespace, "'webServerNamespace' must not be null");
+			Assert.notNull(endpoints, "'endpoints' must not be null");
+			Assert.notEmpty(endpoints, "'endpoints' must not be empty");
+			this.webServerNamespace = webServerNamespace;
+			this.endpoints = endpoints;
+			this.httpMethod = httpMethod;
+		}
+
+		/**
+		 * Restricts the matcher to only consider requests with a particular HTTP method.
+		 * @param httpMethod the HTTP method to include
+		 * @return a copy of the matcher further restricted to only match requests with
+		 * the specified HTTP method
+		 * @since 3.5.0
+		 */
+		public AdditionalPathsEndpointServerWebExchangeMatcher withHttpMethod(HttpMethod httpMethod) {
+			return new AdditionalPathsEndpointServerWebExchangeMatcher(this.webServerNamespace, this.endpoints,
+					httpMethod);
+		}
+
+		@Override
+		protected boolean ignoreApplicationContext(ApplicationContext applicationContext,
+				ManagementPortType managementPortType) {
+			return !hasWebServerNamespace(applicationContext, this.webServerNamespace);
+		}
+
+		@Override
+		protected ServerWebExchangeMatcher createDelegate(PathMappedEndpoints endpoints) {
+			Set<String> paths = this.endpoints.stream()
+				.filter(Objects::nonNull)
+				.map(this::getEndpointId)
+				.flatMap((endpointId) -> streamAdditionalPaths(endpoints, endpointId))
+				.collect(Collectors.toCollection(LinkedHashSet::new));
+			List<ServerWebExchangeMatcher> delegateMatchers = getDelegateMatchers(paths, this.httpMethod);
+			return (!CollectionUtils.isEmpty(delegateMatchers)) ? new OrServerWebExchangeMatcher(delegateMatchers)
+					: EMPTY_MATCHER;
+		}
+
+		private Stream<String> streamAdditionalPaths(PathMappedEndpoints pathMappedEndpoints, EndpointId endpointId) {
+			return pathMappedEndpoints.getAdditionalPaths(this.webServerNamespace, endpointId).stream();
+		}
+
+		@Override
+		public String toString() {
+			return String.format("AdditionalPathsEndpointServerWebExchangeMatcher endpoints=%s, webServerNamespace=%s",
+					toString(this.endpoints, ""), this.webServerNamespace);
 		}
 
 	}

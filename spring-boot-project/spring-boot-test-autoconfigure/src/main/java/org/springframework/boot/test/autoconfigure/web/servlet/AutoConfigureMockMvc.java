@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,7 +23,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-import com.gargoylesoftware.htmlunit.WebClient;
+import org.htmlunit.WebClient;
 import org.openqa.selenium.WebDriver;
 
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
@@ -31,10 +31,12 @@ import org.springframework.boot.test.autoconfigure.properties.PropertyMapping;
 import org.springframework.boot.test.autoconfigure.properties.SkipPropertyMapping;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
 /**
  * Annotation that can be applied to a test class to enable and configure
- * auto-configuration of {@link MockMvc}.
+ * auto-configuration of {@link MockMvc}. If AssertJ is available a {@link MockMvcTester}
+ * is auto-configured as well.
  *
  * @author Phillip Webb
  * @since 1.4.0
@@ -84,12 +86,5 @@ public @interface AutoConfigureMockMvc {
 	 */
 	@PropertyMapping("webdriver.enabled")
 	boolean webDriverEnabled() default true;
-
-	/**
-	 * If Spring Security's {@link MockMvc} support should be auto-configured when it is
-	 * on the classpath. Defaults to {@code true}.
-	 * @return if Spring Security's MockMvc support is auto-configured
-	 */
-	boolean secure() default true;
 
 }

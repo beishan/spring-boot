@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,20 +19,25 @@ package org.springframework.boot.test.autoconfigure.json;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 
-import javax.json.bind.Jsonb;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
+import jakarta.json.bind.Jsonb;
 
+import org.springframework.aot.hint.ExecutableMode;
+import org.springframework.aot.hint.MemberCategory;
+import org.springframework.aot.hint.ReflectionHints;
+import org.springframework.aot.hint.RuntimeHints;
+import org.springframework.aot.hint.RuntimeHintsRegistrar;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.config.BeanPostProcessor;
-import org.springframework.beans.factory.config.InstantiationAwareBeanPostProcessorAdapter;
-import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.beans.factory.config.InstantiationAwareBeanPostProcessor;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.gson.GsonAutoConfiguration;
 import org.springframework.boot.autoconfigure.jackson.JacksonAutoConfiguration;
 import org.springframework.boot.autoconfigure.jsonb.JsonbAutoConfiguration;
@@ -43,6 +48,7 @@ import org.springframework.boot.test.json.JacksonTester;
 import org.springframework.boot.test.json.JsonbTester;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.context.annotation.Scope;
 import org.springframework.core.ResolvableType;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -53,14 +59,13 @@ import org.springframework.util.ReflectionUtils;
  *
  * @author Phillip Webb
  * @author Eddú Meléndez
- * @see AutoConfigureJsonTesters
  * @since 1.4.0
+ * @see AutoConfigureJsonTesters
  */
-@Configuration
+@AutoConfiguration(
+		after = { JacksonAutoConfiguration.class, GsonAutoConfiguration.class, JsonbAutoConfiguration.class })
 @ConditionalOnClass(name = "org.assertj.core.api.Assert")
-@ConditionalOnProperty("spring.test.jsontesters.enabled")
-@AutoConfigureAfter({ JacksonAutoConfiguration.class, GsonAutoConfiguration.class,
-		JsonbAutoConfiguration.class })
+@ConditionalOnBooleanProperty("spring.test.jsontesters.enabled")
 public class JsonTestersAutoConfiguration {
 
 	@Bean
@@ -69,56 +74,85 @@ public class JsonTestersAutoConfiguration {
 	}
 
 	@Bean
-	@Scope("prototype")
+	@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+	@ImportRuntimeHints(BasicJsonTesterRuntimeHints.class)
 	public FactoryBean<BasicJsonTester> basicJsonTesterFactoryBean() {
-		return new JsonTesterFactoryBean<BasicJsonTester, Void>(BasicJsonTester.class,
-				null);
+		return new JsonTesterFactoryBean<BasicJsonTester, Void>(BasicJsonTester.class, null);
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	@ConditionalOnClass(ObjectMapper.class)
 	static class JacksonJsonTestersConfiguration {
 
 		@Bean
-		@Scope("prototype")
+		@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 		@ConditionalOnBean(ObjectMapper.class)
-		public FactoryBean<JacksonTester<?>> jacksonTesterFactoryBean(
-				ObjectMapper mapper) {
+		@ImportRuntimeHints(JacksonTesterRuntimeHints.class)
+		FactoryBean<JacksonTester<?>> jacksonTesterFactoryBean(ObjectMapper mapper) {
 			return new JsonTesterFactoryBean<>(JacksonTester.class, mapper);
+		}
+
+		static class JacksonTesterRuntimeHints extends AbstractJsonMarshalTesterRuntimeHints {
+
+			JacksonTesterRuntimeHints() {
+				super(JacksonTester.class);
+			}
+
 		}
 
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	@ConditionalOnClass(Gson.class)
 	static class GsonJsonTestersConfiguration {
 
 		@Bean
-		@Scope("prototype")
+		@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 		@ConditionalOnBean(Gson.class)
-		public FactoryBean<GsonTester<?>> gsonTesterFactoryBean(Gson gson) {
+		@ImportRuntimeHints(GsonTesterRuntimeHints.class)
+		FactoryBean<GsonTester<?>> gsonTesterFactoryBean(Gson gson) {
 			return new JsonTesterFactoryBean<>(GsonTester.class, gson);
+		}
+
+		static class GsonTesterRuntimeHints extends AbstractJsonMarshalTesterRuntimeHints {
+
+			GsonTesterRuntimeHints() {
+				super(GsonTester.class);
+			}
+
 		}
 
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	@ConditionalOnClass(Jsonb.class)
 	static class JsonbJsonTesterConfiguration {
 
 		@Bean
-		@Scope("prototype")
+		@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 		@ConditionalOnBean(Jsonb.class)
-		public FactoryBean<JsonbTester<?>> jsonbTesterFactoryBean(Jsonb jsonb) {
+		@ImportRuntimeHints(JsonbJsonTesterRuntimeHints.class)
+		FactoryBean<JsonbTester<?>> jsonbTesterFactoryBean(Jsonb jsonb) {
 			return new JsonTesterFactoryBean<>(JsonbTester.class, jsonb);
+		}
+
+		static class JsonbJsonTesterRuntimeHints extends AbstractJsonMarshalTesterRuntimeHints {
+
+			JsonbJsonTesterRuntimeHints() {
+				super(JsonbTester.class);
+			}
+
 		}
 
 	}
 
 	/**
 	 * {@link FactoryBean} used to create JSON Tester instances.
+	 *
+	 * @param <T> the object type
+	 * @param <M> the marshaller type
 	 */
-	private static class JsonTesterFactoryBean<T, M> implements FactoryBean<T> {
+	static class JsonTesterFactoryBean<T, M> implements FactoryBean<T> {
 
 		private final Class<?> objectType;
 
@@ -127,7 +161,6 @@ public class JsonTestersAutoConfiguration {
 		JsonTesterFactoryBean(Class<?> objectType, M marshaller) {
 			this.objectType = objectType;
 			this.marshaller = marshaller;
-
 		}
 
 		@Override
@@ -146,14 +179,12 @@ public class JsonTestersAutoConfiguration {
 			Constructor<?>[] constructors = this.objectType.getDeclaredConstructors();
 			for (Constructor<?> constructor : constructors) {
 				if (constructor.getParameterCount() == 1
-						&& constructor.getParameterTypes()[0]
-								.isInstance(this.marshaller)) {
+						&& constructor.getParameterTypes()[0].isInstance(this.marshaller)) {
 					ReflectionUtils.makeAccessible(constructor);
 					return (T) BeanUtils.instantiateClass(constructor, this.marshaller);
 				}
 			}
-			throw new IllegalStateException(
-					this.objectType + " does not have a usable constructor");
+			throw new IllegalStateException(this.objectType + " does not have a usable constructor");
 		}
 
 		@Override
@@ -166,21 +197,17 @@ public class JsonTestersAutoConfiguration {
 	/**
 	 * {@link BeanPostProcessor} used to initialize JSON testers.
 	 */
-	private static class JsonMarshalTestersBeanPostProcessor
-			extends InstantiationAwareBeanPostProcessorAdapter {
+	static class JsonMarshalTestersBeanPostProcessor implements InstantiationAwareBeanPostProcessor {
 
 		@Override
-		public Object postProcessAfterInitialization(Object bean, String beanName)
-				throws BeansException {
-			ReflectionUtils.doWithFields(bean.getClass(),
-					(field) -> processField(bean, field));
+		public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+			ReflectionUtils.doWithFields(bean.getClass(), (field) -> processField(bean, field));
 			return bean;
 		}
 
 		private void processField(Object bean, Field field) {
 			if (AbstractJsonMarshalTester.class.isAssignableFrom(field.getType())) {
-				initializeTester(bean, field, bean.getClass(),
-						ResolvableType.forField(field).getGeneric());
+				initializeTester(bean, field, bean.getClass(), ResolvableType.forField(field).getGeneric());
 			}
 			else if (BasicJsonTester.class.isAssignableFrom(field.getType())) {
 				initializeTester(bean, field, bean.getClass());
@@ -193,6 +220,38 @@ public class JsonTestersAutoConfiguration {
 			if (tester != null) {
 				ReflectionTestUtils.invokeMethod(tester, "initialize", args);
 			}
+		}
+
+	}
+
+	@SuppressWarnings("rawtypes")
+	static class AbstractJsonMarshalTesterRuntimeHints implements RuntimeHintsRegistrar {
+
+		private final Class<? extends AbstractJsonMarshalTester> tester;
+
+		AbstractJsonMarshalTesterRuntimeHints(Class<? extends AbstractJsonMarshalTester> tester) {
+			this.tester = tester;
+		}
+
+		@Override
+		public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
+			ReflectionHints reflection = hints.reflection();
+			reflection.registerType(this.tester, MemberCategory.INVOKE_DECLARED_CONSTRUCTORS);
+			reflection.registerMethod(
+					ReflectionUtils.findMethod(this.tester, "initialize", Class.class, ResolvableType.class),
+					ExecutableMode.INVOKE);
+		}
+
+	}
+
+	static class BasicJsonTesterRuntimeHints implements RuntimeHintsRegistrar {
+
+		@Override
+		public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
+			ReflectionHints reflection = hints.reflection();
+			reflection.registerType(BasicJsonTester.class, MemberCategory.INVOKE_DECLARED_CONSTRUCTORS);
+			reflection.registerMethod(ReflectionUtils.findMethod(BasicJsonTester.class, "initialize", Class.class),
+					ExecutableMode.INVOKE);
 		}
 
 	}

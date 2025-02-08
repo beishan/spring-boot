@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,14 +16,9 @@
 
 package org.springframework.boot.test.context.runner;
 
-import java.util.List;
 import java.util.function.Supplier;
 
-import org.springframework.boot.context.annotation.Configurations;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
-import org.springframework.boot.test.util.TestPropertyValues;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
@@ -52,33 +47,28 @@ public class ApplicationContextRunner extends
 	/**
 	 * Create a new {@link ApplicationContextRunner} instance using the specified
 	 * {@code contextFactory} as the underlying source.
-	 * @param contextFactory a supplier that returns a new instance on each call
+	 * @param contextFactory a supplier that returns a new instance on each call be added
+	 * to the application context proxy
 	 */
-	public ApplicationContextRunner(
-			Supplier<ConfigurableApplicationContext> contextFactory) {
-		super(contextFactory);
+	public ApplicationContextRunner(Supplier<ConfigurableApplicationContext> contextFactory) {
+		super(ApplicationContextRunner::new, contextFactory);
 	}
 
-	private ApplicationContextRunner(
-			Supplier<ConfigurableApplicationContext> contextFactory,
-			List<ApplicationContextInitializer<ConfigurableApplicationContext>> initializers,
-			TestPropertyValues environmentProperties, TestPropertyValues systemProperties,
-			ClassLoader classLoader, ApplicationContext parent,
-			List<Configurations> configurations) {
-		super(contextFactory, initializers, environmentProperties, systemProperties,
-				classLoader, parent, configurations);
+	/**
+	 * Create a new {@link ApplicationContextRunner} instance using the specified
+	 * {@code contextFactory} as the underlying source.
+	 * @param contextFactory a supplier that returns a new instance on each call
+	 * @param additionalContextInterfaces any additional application context interfaces to
+	 * be added to the application context proxy
+	 * @since 3.4.0
+	 */
+	public ApplicationContextRunner(Supplier<ConfigurableApplicationContext> contextFactory,
+			Class<?>... additionalContextInterfaces) {
+		super(ApplicationContextRunner::new, contextFactory, additionalContextInterfaces);
 	}
 
-	@Override
-	protected ApplicationContextRunner newInstance(
-			Supplier<ConfigurableApplicationContext> contextFactory,
-			List<ApplicationContextInitializer<ConfigurableApplicationContext>> initializers,
-			TestPropertyValues environmentProperties, TestPropertyValues systemProperties,
-			ClassLoader classLoader, ApplicationContext parent,
-			List<Configurations> configurations) {
-		return new ApplicationContextRunner(contextFactory, initializers,
-				environmentProperties, systemProperties, classLoader, parent,
-				configurations);
+	private ApplicationContextRunner(RunnerConfiguration<ConfigurableApplicationContext> runnerConfiguration) {
+		super(runnerConfiguration, ApplicationContextRunner::new);
 	}
 
 }

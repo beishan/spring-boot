@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,12 +16,21 @@
 
 package org.springframework.boot.gradle.plugin;
 
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.StringReader;
+import java.util.HashSet;
+import java.util.Set;
 
-import org.springframework.boot.gradle.junit.GradleCompatibilitySuite;
-import org.springframework.boot.gradle.testkit.GradleBuild;
+import org.gradle.testkit.runner.BuildResult;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledForJreRange;
+import org.junit.jupiter.api.condition.JRE;
+import org.junit.jupiter.api.extension.ExtendWith;
+
+import org.springframework.boot.gradle.testkit.PluginClasspathGradleBuild;
+import org.springframework.boot.testsupport.gradle.testkit.GradleBuild;
+import org.springframework.boot.testsupport.gradle.testkit.GradleBuildExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -30,26 +39,51 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * @author Andy Wilkinson
  */
-@RunWith(GradleCompatibilitySuite.class)
-public class KotlinPluginActionIntegrationTests {
+@DisabledForJreRange(min = JRE.JAVA_20)
+@ExtendWith(GradleBuildExtension.class)
+class KotlinPluginActionIntegrationTests {
 
-	@Rule
-	public GradleBuild gradleBuild;
+	GradleBuild gradleBuild = new PluginClasspathGradleBuild();
 
 	@Test
-	public void noKotlinVersionPropertyWithoutKotlinPlugin() {
-		assertThat(this.gradleBuild.build("kotlinVersion").getOutput())
-				.contains("Kotlin version: none");
+	void noKotlinVersionPropertyWithoutKotlinPlugin() {
+		assertThat(this.gradleBuild.build("kotlinVersion").getOutput()).contains("Kotlin version: none");
 	}
 
 	@Test
-	public void kotlinVersionMatchesKotlinPluginVersion() {
-		String output = this.gradleBuild
-				.build("kotlinVersion", "dependencies", "--configuration", "compile")
-				.getOutput();
-		assertThat(output).contains("Kotlin version: 1.2.10");
-		assertThat(output)
-				.containsPattern("org.jetbrains.kotlin:kotlin-stdlib-jdk8:* -> 1.2.10");
+	void kotlinVersionPropertyIsSet() {
+		String output = this.gradleBuild.build("kotlinVersion", "dependencies", "--configuration", "compileClasspath")
+			.getOutput();
+		assertThat(output).containsPattern("Kotlin version: [0-9]\\.[0-9]\\.[0-9]+");
+	}
+
+	@Test
+	void kotlinCompileTasksUseJavaParametersFlagByDefault() {
+		assertThat(this.gradleBuild.build("kotlinCompileTasksJavaParameters").getOutput())
+			.contains("compileKotlin java parameters: true")
+			.contains("compileTestKotlin java parameters: true");
+	}
+
+	@Test
+	void kotlinCompileTasksCanOverrideDefaultJavaParametersFlag() {
+		assertThat(this.gradleBuild.build("kotlinCompileTasksJavaParameters").getOutput())
+			.contains("compileKotlin java parameters: false")
+			.contains("compileTestKotlin java parameters: false");
+	}
+
+	@Test
+	void taskConfigurationIsAvoided() throws IOException {
+		BuildResult result = this.gradleBuild.build("help");
+		String output = result.getOutput();
+		BufferedReader reader = new BufferedReader(new StringReader(output));
+		String line;
+		Set<String> configured = new HashSet<>();
+		while ((line = reader.readLine()) != null) {
+			if (line.startsWith("Configuring :")) {
+				configured.add(line.substring("Configuring :".length()));
+			}
+		}
+		assertThat(configured).containsExactlyInAnyOrder("help", "compileJava", "clean");
 	}
 
 }

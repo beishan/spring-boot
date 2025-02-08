@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -35,7 +35,7 @@ import org.springframework.context.ConfigurableApplicationContext;
  * @see ApplicationContext
  */
 public interface AssertableApplicationContext
-		extends ApplicationContextAssertProvider<ConfigurableApplicationContext> {
+		extends ApplicationContextAssertProvider<ConfigurableApplicationContext>, ConfigurableApplicationContext {
 
 	/**
 	 * Factory method to create a new {@link AssertableApplicationContext} instance.
@@ -44,10 +44,25 @@ public interface AssertableApplicationContext
 	 * to start.
 	 * @return an {@link AssertableApplicationContext} instance
 	 */
-	static AssertableApplicationContext get(
-			Supplier<? extends ConfigurableApplicationContext> contextSupplier) {
+	static AssertableApplicationContext get(Supplier<? extends ConfigurableApplicationContext> contextSupplier) {
 		return ApplicationContextAssertProvider.get(AssertableApplicationContext.class,
 				ConfigurableApplicationContext.class, contextSupplier);
+	}
+
+	/**
+	 * Factory method to create a new {@link AssertableApplicationContext} instance.
+	 * @param contextSupplier a supplier that will either return a fully configured
+	 * {@link ConfigurableApplicationContext} or throw an exception if the context fails
+	 * to start.
+	 * @param additionalContextInterfaces and additional context interfaces to add to the
+	 * proxy
+	 * @return an {@link AssertableApplicationContext} instance
+	 * @since 3.4.0
+	 */
+	static AssertableApplicationContext get(Supplier<? extends ConfigurableApplicationContext> contextSupplier,
+			Class<?>... additionalContextInterfaces) {
+		return ApplicationContextAssertProvider.get(AssertableApplicationContext.class,
+				ConfigurableApplicationContext.class, contextSupplier, additionalContextInterfaces);
 	}
 
 }

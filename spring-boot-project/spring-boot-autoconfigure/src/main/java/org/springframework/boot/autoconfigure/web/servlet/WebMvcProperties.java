@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,47 +17,36 @@
 package org.springframework.boot.autoconfigure.web.servlet;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.Locale;
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.http.MediaType;
+import org.springframework.util.Assert;
 import org.springframework.validation.DefaultMessageCodesResolver;
 
 /**
- * {@link ConfigurationProperties properties} for Spring MVC.
+ * {@link ConfigurationProperties Properties} for Spring MVC.
  *
  * @author Phillip Webb
  * @author Sébastien Deleuze
  * @author Stephane Nicoll
  * @author Eddú Meléndez
  * @author Brian Clozel
- * @since 1.1
+ * @author Vedran Pavic
+ * @since 2.0.0
  */
-@ConfigurationProperties(prefix = "spring.mvc")
+@ConfigurationProperties("spring.mvc")
 public class WebMvcProperties {
 
 	/**
-	 * Formatting strategy for message codes. For instance, `PREFIX_ERROR_CODE`.
+	 * Formatting strategy for message codes. For instance, 'PREFIX_ERROR_CODE'.
 	 */
 	private DefaultMessageCodesResolver.Format messageCodesResolverFormat;
 
-	/**
-	 * Locale to use. By default, this locale is overridden by the "Accept-Language"
-	 * header.
-	 */
-	private Locale locale;
-
-	/**
-	 * Define how the locale should be resolved.
-	 */
-	private LocaleResolver localeResolver = LocaleResolver.ACCEPT_HEADER;
-
-	/**
-	 * Date format to use. For instance, `dd/MM/yyyy`.
-	 */
-	private String dateFormat;
+	private final Format format = new Format();
 
 	/**
 	 * Whether to dispatch TRACE requests to the FrameworkServlet doService method.
@@ -70,20 +59,19 @@ public class WebMvcProperties {
 	private boolean dispatchOptionsRequest = true;
 
 	/**
-	 * Whether the content of the "default" model should be ignored during redirect
-	 * scenarios.
+	 * Whether to publish a ServletRequestHandledEvent at the end of each request.
 	 */
-	private boolean ignoreDefaultModelOnRedirect = true;
+	private boolean publishRequestHandledEvents = true;
 
 	/**
-	 * Whether a "NoHandlerFoundException" should be thrown if no Handler was found to
-	 * process a request.
+	 * Whether logging of (potentially sensitive) request details at DEBUG and TRACE level
+	 * is allowed.
 	 */
-	private boolean throwExceptionIfNoHandlerFound = false;
+	private boolean logRequestDetails;
 
 	/**
 	 * Whether to enable warn logging of exceptions resolved by a
-	 * "HandlerExceptionResolver".
+	 * "HandlerExceptionResolver", except for "DefaultHandlerExceptionResolver".
 	 */
 	private boolean logResolvedException = false;
 
@@ -91,6 +79,11 @@ public class WebMvcProperties {
 	 * Path pattern used for static resources.
 	 */
 	private String staticPathPattern = "/**";
+
+	/**
+	 * Path pattern used for WebJar assets.
+	 */
+	private String webjarsPathPattern = "/webjars/**";
 
 	private final Async async = new Async();
 
@@ -102,54 +95,34 @@ public class WebMvcProperties {
 
 	private final Pathmatch pathmatch = new Pathmatch();
 
+	private final Problemdetails problemdetails = new Problemdetails();
+
 	public DefaultMessageCodesResolver.Format getMessageCodesResolverFormat() {
 		return this.messageCodesResolverFormat;
 	}
 
-	public void setMessageCodesResolverFormat(
-			DefaultMessageCodesResolver.Format messageCodesResolverFormat) {
+	public void setMessageCodesResolverFormat(DefaultMessageCodesResolver.Format messageCodesResolverFormat) {
 		this.messageCodesResolverFormat = messageCodesResolverFormat;
 	}
 
-	public Locale getLocale() {
-		return this.locale;
+	public Format getFormat() {
+		return this.format;
 	}
 
-	public void setLocale(Locale locale) {
-		this.locale = locale;
+	public boolean isPublishRequestHandledEvents() {
+		return this.publishRequestHandledEvents;
 	}
 
-	public LocaleResolver getLocaleResolver() {
-		return this.localeResolver;
+	public void setPublishRequestHandledEvents(boolean publishRequestHandledEvents) {
+		this.publishRequestHandledEvents = publishRequestHandledEvents;
 	}
 
-	public void setLocaleResolver(LocaleResolver localeResolver) {
-		this.localeResolver = localeResolver;
+	public boolean isLogRequestDetails() {
+		return this.logRequestDetails;
 	}
 
-	public String getDateFormat() {
-		return this.dateFormat;
-	}
-
-	public void setDateFormat(String dateFormat) {
-		this.dateFormat = dateFormat;
-	}
-
-	public boolean isIgnoreDefaultModelOnRedirect() {
-		return this.ignoreDefaultModelOnRedirect;
-	}
-
-	public void setIgnoreDefaultModelOnRedirect(boolean ignoreDefaultModelOnRedirect) {
-		this.ignoreDefaultModelOnRedirect = ignoreDefaultModelOnRedirect;
-	}
-
-	public boolean isThrowExceptionIfNoHandlerFound() {
-		return this.throwExceptionIfNoHandlerFound;
-	}
-
-	public void setThrowExceptionIfNoHandlerFound(
-			boolean throwExceptionIfNoHandlerFound) {
-		this.throwExceptionIfNoHandlerFound = throwExceptionIfNoHandlerFound;
+	public void setLogRequestDetails(boolean logRequestDetails) {
+		this.logRequestDetails = logRequestDetails;
 	}
 
 	public boolean isLogResolvedException() {
@@ -184,6 +157,14 @@ public class WebMvcProperties {
 		this.staticPathPattern = staticPathPattern;
 	}
 
+	public String getWebjarsPathPattern() {
+		return this.webjarsPathPattern;
+	}
+
+	public void setWebjarsPathPattern(String webjarsPathPattern) {
+		this.webjarsPathPattern = webjarsPathPattern;
+	}
+
 	public Async getAsync() {
 		return this.async;
 	}
@@ -204,12 +185,15 @@ public class WebMvcProperties {
 		return this.pathmatch;
 	}
 
+	public Problemdetails getProblemdetails() {
+		return this.problemdetails;
+	}
+
 	public static class Async {
 
 		/**
 		 * Amount of time before asynchronous request handling times out. If this value is
-		 * not set, the default timeout of the underlying implementation is used, e.g. 10
-		 * seconds on Tomcat with Servlet 3.
+		 * not set, the default timeout of the underlying implementation is used.
 		 */
 		private Duration requestTimeout;
 
@@ -226,9 +210,25 @@ public class WebMvcProperties {
 	public static class Servlet {
 
 		/**
+		 * Path of the dispatcher servlet. Setting a custom value for this property is not
+		 * compatible with the PathPatternParser matching strategy.
+		 */
+		private String path = "/";
+
+		/**
 		 * Load on startup priority of the dispatcher servlet.
 		 */
 		private int loadOnStartup = -1;
+
+		public String getPath() {
+			return this.path;
+		}
+
+		public void setPath(String path) {
+			Assert.notNull(path, "'path' must not be null");
+			Assert.isTrue(!path.contains("*"), "'path' must not contain wildcards");
+			this.path = path;
+		}
 
 		public int getLoadOnStartup() {
 			return this.loadOnStartup;
@@ -236,6 +236,36 @@ public class WebMvcProperties {
 
 		public void setLoadOnStartup(int loadOnStartup) {
 			this.loadOnStartup = loadOnStartup;
+		}
+
+		public String getServletMapping() {
+			if (this.path.isEmpty() || this.path.equals("/")) {
+				return "/";
+			}
+			if (this.path.endsWith("/")) {
+				return this.path + "*";
+			}
+			return this.path + "/*";
+		}
+
+		public String getPath(String path) {
+			String prefix = getServletPrefix();
+			if (!path.startsWith("/")) {
+				path = "/" + path;
+			}
+			return prefix + path;
+		}
+
+		public String getServletPrefix() {
+			String result = this.path;
+			int index = result.indexOf('*');
+			if (index != -1) {
+				result = result.substring(0, index);
+			}
+			if (result.endsWith("/")) {
+				result = result.substring(0, result.length() - 1);
+			}
+			return result;
 		}
 
 	}
@@ -273,17 +303,15 @@ public class WebMvcProperties {
 	public static class Contentnegotiation {
 
 		/**
-		 * Whether the path extension in the URL path should be used to determine the
-		 * requested media type. If enabled a request "/users.pdf" will be interpreted as
-		 * a request for "application/pdf" regardless of the 'Accept' header.
-		 */
-		private boolean favorPathExtension = false;
-
-		/**
 		 * Whether a request parameter ("format" by default) should be used to determine
 		 * the requested media type.
 		 */
 		private boolean favorParameter = false;
+
+		/**
+		 * Query parameter name to use when "favor-parameter" is enabled.
+		 */
+		private String parameterName;
 
 		/**
 		 * Map file extensions to media types for content negotiation. For instance, yml
@@ -292,17 +320,10 @@ public class WebMvcProperties {
 		private Map<String, MediaType> mediaTypes = new LinkedHashMap<>();
 
 		/**
-		 * Query parameter name to use when "favor-parameter" is enabled.
+		 * List of default content types to be used when no specific content type is
+		 * requested.
 		 */
-		private String parameterName;
-
-		public boolean isFavorPathExtension() {
-			return this.favorPathExtension;
-		}
-
-		public void setFavorPathExtension(boolean favorPathExtension) {
-			this.favorPathExtension = favorPathExtension;
-		}
+		private List<MediaType> defaultContentTypes = new ArrayList<>();
 
 		public boolean isFavorParameter() {
 			return this.favorParameter;
@@ -310,14 +331,6 @@ public class WebMvcProperties {
 
 		public void setFavorParameter(boolean favorParameter) {
 			this.favorParameter = favorParameter;
-		}
-
-		public Map<String, MediaType> getMediaTypes() {
-			return this.mediaTypes;
-		}
-
-		public void setMediaTypes(Map<String, MediaType> mediaTypes) {
-			this.mediaTypes = mediaTypes;
 		}
 
 		public String getParameterName() {
@@ -328,54 +341,120 @@ public class WebMvcProperties {
 			this.parameterName = parameterName;
 		}
 
+		public Map<String, MediaType> getMediaTypes() {
+			return this.mediaTypes;
+		}
+
+		public void setMediaTypes(Map<String, MediaType> mediaTypes) {
+			this.mediaTypes = mediaTypes;
+		}
+
+		public List<MediaType> getDefaultContentTypes() {
+			return this.defaultContentTypes;
+		}
+
+		public void setDefaultContentTypes(List<MediaType> defaultContentTypes) {
+			this.defaultContentTypes = defaultContentTypes;
+		}
+
 	}
 
 	public static class Pathmatch {
 
 		/**
-		 * Whether to use suffix pattern match (".*") when matching patterns to requests.
-		 * If enabled a method mapped to "/users" also matches to "/users.*".
+		 * Choice of strategy for matching request paths against registered mappings.
 		 */
-		private boolean useSuffixPattern = false;
+		private MatchingStrategy matchingStrategy = MatchingStrategy.PATH_PATTERN_PARSER;
 
-		/**
-		 * Whether suffix pattern matching should work only against extensions registered
-		 * with "spring.mvc.contentnegotiation.media-types.*". This is generally
-		 * recommended to reduce ambiguity and to avoid issues such as when a "." appears
-		 * in the path for other reasons.
-		 */
-		private boolean useRegisteredSuffixPattern = false;
-
-		public boolean isUseSuffixPattern() {
-			return this.useSuffixPattern;
+		public MatchingStrategy getMatchingStrategy() {
+			return this.matchingStrategy;
 		}
 
-		public void setUseSuffixPattern(boolean useSuffixPattern) {
-			this.useSuffixPattern = useSuffixPattern;
-		}
-
-		public boolean isUseRegisteredSuffixPattern() {
-			return this.useRegisteredSuffixPattern;
-		}
-
-		public void setUseRegisteredSuffixPattern(boolean useRegisteredSuffixPattern) {
-			this.useRegisteredSuffixPattern = useRegisteredSuffixPattern;
+		public void setMatchingStrategy(MatchingStrategy matchingStrategy) {
+			this.matchingStrategy = matchingStrategy;
 		}
 
 	}
 
-	public enum LocaleResolver {
+	public static class Format {
 
 		/**
-		 * Always use the configured locale.
+		 * Date format to use, for example 'dd/MM/yyyy'. Used for formatting of
+		 * java.util.Date and java.time.LocalDate.
 		 */
-		FIXED,
+		private String date;
 
 		/**
-		 * Use the "Accept-Language" header or the configured locale if the header is not
-		 * set.
+		 * Time format to use, for example 'HH:mm:ss'. Used for formatting of java.time's
+		 * LocalTime and OffsetTime.
 		 */
-		ACCEPT_HEADER
+		private String time;
+
+		/**
+		 * Date-time format to use, for example 'yyyy-MM-dd HH:mm:ss'. Used for formatting
+		 * of java.time's LocalDateTime, OffsetDateTime, and ZonedDateTime.
+		 */
+		private String dateTime;
+
+		public String getDate() {
+			return this.date;
+		}
+
+		public void setDate(String date) {
+			this.date = date;
+		}
+
+		public String getTime() {
+			return this.time;
+		}
+
+		public void setTime(String time) {
+			this.time = time;
+		}
+
+		public String getDateTime() {
+			return this.dateTime;
+		}
+
+		public void setDateTime(String dateTime) {
+			this.dateTime = dateTime;
+		}
+
+	}
+
+	/**
+	 * Matching strategy options.
+	 *
+	 * @since 2.4.0
+	 */
+	public enum MatchingStrategy {
+
+		/**
+		 * Use the {@code AntPathMatcher} implementation.
+		 */
+		ANT_PATH_MATCHER,
+
+		/**
+		 * Use the {@code PathPatternParser} implementation.
+		 */
+		PATH_PATTERN_PARSER
+
+	}
+
+	public static class Problemdetails {
+
+		/**
+		 * Whether RFC 9457 Problem Details support should be enabled.
+		 */
+		private boolean enabled = false;
+
+		public boolean isEnabled() {
+			return this.enabled;
+		}
+
+		public void setEnabled(boolean enabled) {
+			this.enabled = enabled;
+		}
 
 	}
 

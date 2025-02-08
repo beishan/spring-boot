@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -20,13 +20,14 @@ import org.springframework.boot.actuate.autoconfigure.metrics.export.properties.
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * {@link ConfigurationProperties} for configuring Datadog metrics export.
+ * {@link ConfigurationProperties @ConfigurationProperties} for configuring Datadog
+ * metrics export.
  *
  * @author Jon Schneider
  * @author Stephane Nicoll
  * @since 2.0.0
  */
-@ConfigurationProperties(prefix = "management.metrics.export.datadog")
+@ConfigurationProperties("management.datadog.metrics.export")
 public class DatadogProperties extends StepRegistryProperties {
 
 	/**
@@ -52,10 +53,10 @@ public class DatadogProperties extends StepRegistryProperties {
 	private String hostTag = "instance";
 
 	/**
-	 * URI to ship metrics to. If you need to publish metrics to an internal proxy
-	 * en-route to Datadog, you can define the location of the proxy with this.
+	 * URI to ship metrics to. Set this if you need to publish metrics to a Datadog site
+	 * other than US, or to an internal proxy en-route to Datadog.
 	 */
-	private String uri = "https://app.datadoghq.com";
+	private String uri = "https://api.datadoghq.com";
 
 	public String getApiKey() {
 		return this.apiKey;

@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,24 +16,21 @@
 
 package org.springframework.boot.autoconfigure.web.reactive.function.client;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.http.codec.CodecsAutoConfiguration;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.boot.web.codec.CodecCustomizer;
 import org.springframework.boot.web.reactive.function.client.WebClientCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
-import org.springframework.core.annotation.AnnotationAwareOrderComparator;
 import org.springframework.core.annotation.Order;
-import org.springframework.util.CollectionUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
@@ -47,42 +44,36 @@ import org.springframework.web.reactive.function.client.WebClient;
  * @author Brian Clozel
  * @since 2.0.0
  */
-@Configuration
+@AutoConfiguration(after = { CodecsAutoConfiguration.class, ClientHttpConnectorAutoConfiguration.class })
 @ConditionalOnClass(WebClient.class)
-@AutoConfigureAfter(CodecsAutoConfiguration.class)
 public class WebClientAutoConfiguration {
 
-	private final WebClient.Builder webClientBuilder;
-
-	public WebClientAutoConfiguration(
-			ObjectProvider<List<WebClientCustomizer>> customizerProvider) {
-		this.webClientBuilder = WebClient.builder();
-		List<WebClientCustomizer> customizers = customizerProvider.getIfAvailable();
-		if (!CollectionUtils.isEmpty(customizers)) {
-			customizers = new ArrayList<>(customizers);
-			AnnotationAwareOrderComparator.sort(customizers);
-			customizers
-					.forEach((customizer) -> customizer.customize(this.webClientBuilder));
-		}
+	@Bean
+	@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+	@ConditionalOnMissingBean
+	public WebClient.Builder webClientBuilder(ObjectProvider<WebClientCustomizer> customizerProvider) {
+		WebClient.Builder builder = WebClient.builder();
+		customizerProvider.orderedStream().forEach((customizer) -> customizer.customize(builder));
+		return builder;
 	}
 
 	@Bean
-	@Scope("prototype")
-	@ConditionalOnMissingBean
-	public WebClient.Builder webClientBuilder() {
-		return this.webClientBuilder.clone();
+	@ConditionalOnMissingBean(WebClientSsl.class)
+	@ConditionalOnBean(SslBundles.class)
+	AutoConfiguredWebClientSsl webClientSsl(ClientHttpConnectorFactory<?> clientHttpConnectorFactory,
+			SslBundles sslBundles) {
+		return new AutoConfiguredWebClientSsl(clientHttpConnectorFactory, sslBundles);
 	}
 
-	@Configuration
+	@Configuration(proxyBeanMethods = false)
 	@ConditionalOnBean(CodecCustomizer.class)
 	protected static class WebClientCodecsConfiguration {
 
 		@Bean
 		@ConditionalOnMissingBean
 		@Order(0)
-		public WebClientCodecCustomizer exchangeStrategiesCustomizer(
-				List<CodecCustomizer> codecCustomizers) {
-			return new WebClientCodecCustomizer(codecCustomizers);
+		public WebClientCodecCustomizer exchangeStrategiesCustomizer(ObjectProvider<CodecCustomizer> codecCustomizers) {
+			return new WebClientCodecCustomizer(codecCustomizers.orderedStream().toList());
 		}
 
 	}

@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -24,10 +24,11 @@ import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
@@ -44,6 +45,8 @@ import org.springframework.util.ObjectUtils;
  * @author Dave Syer
  * @author Phillip Webb
  * @author Andy Wilkinson
+ * @author Stephane Nicoll
+ * @since 1.0.0
  */
 public final class ConditionEvaluationReport {
 
@@ -57,9 +60,9 @@ public final class ConditionEvaluationReport {
 
 	private ConditionEvaluationReport parent;
 
-	private List<String> exclusions = Collections.emptyList();
+	private final List<String> exclusions = new ArrayList<>();
 
-	private Set<String> unconditionalClasses = new HashSet<>();
+	private final Set<String> unconditionalClasses = new HashSet<>();
 
 	/**
 	 * Private constructor.
@@ -74,16 +77,12 @@ public final class ConditionEvaluationReport {
 	 * @param condition the condition evaluated
 	 * @param outcome the condition outcome
 	 */
-	public void recordConditionEvaluation(String source, Condition condition,
-			ConditionOutcome outcome) {
-		Assert.notNull(source, "Source must not be null");
-		Assert.notNull(condition, "Condition must not be null");
-		Assert.notNull(outcome, "Outcome must not be null");
+	public void recordConditionEvaluation(String source, Condition condition, ConditionOutcome outcome) {
+		Assert.notNull(source, "'source' must not be null");
+		Assert.notNull(condition, "'condition' must not be null");
+		Assert.notNull(outcome, "'outcome' must not be null");
 		this.unconditionalClasses.remove(source);
-		if (!this.outcomes.containsKey(source)) {
-			this.outcomes.put(source, new ConditionAndOutcomes());
-		}
-		this.outcomes.get(source).add(condition, outcome);
+		this.outcomes.computeIfAbsent(source, (key) -> new ConditionAndOutcomes()).add(condition, outcome);
 		this.addedAncestorOutcomes = false;
 	}
 
@@ -92,8 +91,8 @@ public final class ConditionEvaluationReport {
 	 * @param exclusions the names of the excluded classes
 	 */
 	public void recordExclusions(Collection<String> exclusions) {
-		Assert.notNull(exclusions, "exclusions must not be null");
-		this.exclusions = new ArrayList<>(exclusions);
+		Assert.notNull(exclusions, "'exclusions' must not be null");
+		this.exclusions.addAll(exclusions);
 	}
 
 	/**
@@ -102,8 +101,8 @@ public final class ConditionEvaluationReport {
 	 * evaluated
 	 */
 	public void recordEvaluationCandidates(List<String> evaluationCandidates) {
-		Assert.notNull(evaluationCandidates, "evaluationCandidates must not be null");
-		this.unconditionalClasses = new HashSet<>(evaluationCandidates);
+		Assert.notNull(evaluationCandidates, "'evaluationCandidates' must not be null");
+		this.unconditionalClasses.addAll(evaluationCandidates);
 	}
 
 	/**
@@ -112,12 +111,11 @@ public final class ConditionEvaluationReport {
 	 */
 	public Map<String, ConditionAndOutcomes> getConditionAndOutcomesBySource() {
 		if (!this.addedAncestorOutcomes) {
-			for (Map.Entry<String, ConditionAndOutcomes> entry : this.outcomes
-					.entrySet()) {
-				if (!entry.getValue().isFullMatch()) {
-					addNoMatchOutcomeToAncestors(entry.getKey());
+			this.outcomes.forEach((source, sourceOutcomes) -> {
+				if (!sourceOutcomes.isFullMatch()) {
+					addNoMatchOutcomeToAncestors(source);
 				}
-			}
+			});
 			this.addedAncestorOutcomes = true;
 		}
 		return Collections.unmodifiableMap(this.outcomes);
@@ -125,13 +123,13 @@ public final class ConditionEvaluationReport {
 
 	private void addNoMatchOutcomeToAncestors(String source) {
 		String prefix = source + "$";
-		for (Entry<String, ConditionAndOutcomes> entry : this.outcomes.entrySet()) {
-			if (entry.getKey().startsWith(prefix)) {
-				ConditionOutcome outcome = ConditionOutcome.noMatch(ConditionMessage
-						.forCondition("Ancestor " + source).because("did not match"));
-				entry.getValue().add(ANCESTOR_CONDITION, outcome);
+		this.outcomes.forEach((candidateSource, sourceOutcomes) -> {
+			if (candidateSource.startsWith(prefix)) {
+				ConditionOutcome outcome = ConditionOutcome
+					.noMatch(ConditionMessage.forCondition("Ancestor " + source).because("did not match"));
+				sourceOutcomes.add(ANCESTOR_CONDITION, outcome);
 			}
-		}
+		});
 	}
 
 	/**
@@ -147,7 +145,9 @@ public final class ConditionEvaluationReport {
 	 * @return the names of the unconditional classes
 	 */
 	public Set<String> getUnconditionalClasses() {
-		return Collections.unmodifiableSet(this.unconditionalClasses);
+		Set<String> filtered = new HashSet<>(this.unconditionalClasses);
+		this.exclusions.forEach(filtered::remove);
+		return Collections.unmodifiableSet(filtered);
 	}
 
 	/**
@@ -159,12 +159,24 @@ public final class ConditionEvaluationReport {
 	}
 
 	/**
+	 * Attempt to find the {@link ConditionEvaluationReport} for the specified bean
+	 * factory.
+	 * @param beanFactory the bean factory (may be {@code null})
+	 * @return the {@link ConditionEvaluationReport} or {@code null}
+	 */
+	public static ConditionEvaluationReport find(BeanFactory beanFactory) {
+		if (beanFactory instanceof ConfigurableListableBeanFactory) {
+			return ConditionEvaluationReport.get((ConfigurableListableBeanFactory) beanFactory);
+		}
+		return null;
+	}
+
+	/**
 	 * Obtain a {@link ConditionEvaluationReport} for the specified bean factory.
 	 * @param beanFactory the bean factory
 	 * @return an existing or new {@link ConditionEvaluationReport}
 	 */
-	public static ConditionEvaluationReport get(
-			ConfigurableListableBeanFactory beanFactory) {
+	public static ConditionEvaluationReport get(ConfigurableListableBeanFactory beanFactory) {
 		synchronized (beanFactory) {
 			ConditionEvaluationReport report;
 			if (beanFactory.containsSingleton(BEAN_NAME)) {
@@ -179,27 +191,21 @@ public final class ConditionEvaluationReport {
 		}
 	}
 
-	private static void locateParent(BeanFactory beanFactory,
-			ConditionEvaluationReport report) {
-		if (beanFactory != null && report.parent == null
-				&& beanFactory.containsBean(BEAN_NAME)) {
-			report.parent = beanFactory.getBean(BEAN_NAME,
-					ConditionEvaluationReport.class);
+	private static void locateParent(BeanFactory beanFactory, ConditionEvaluationReport report) {
+		if (beanFactory != null && report.parent == null && beanFactory.containsBean(BEAN_NAME)) {
+			report.parent = beanFactory.getBean(BEAN_NAME, ConditionEvaluationReport.class);
 		}
 	}
 
 	public ConditionEvaluationReport getDelta(ConditionEvaluationReport previousReport) {
 		ConditionEvaluationReport delta = new ConditionEvaluationReport();
-		for (Entry<String, ConditionAndOutcomes> entry : this.outcomes.entrySet()) {
-			ConditionAndOutcomes previous = previousReport.outcomes.get(entry.getKey());
-			if (previous == null
-					|| previous.isFullMatch() != entry.getValue().isFullMatch()) {
-				entry.getValue()
-						.forEach((conditionAndOutcome) -> delta.recordConditionEvaluation(
-								entry.getKey(), conditionAndOutcome.getCondition(),
-								conditionAndOutcome.getOutcome()));
+		this.outcomes.forEach((source, sourceOutcomes) -> {
+			ConditionAndOutcomes previous = previousReport.outcomes.get(source);
+			if (previous == null || previous.isFullMatch() != sourceOutcomes.isFullMatch()) {
+				sourceOutcomes.forEach((conditionAndOutcome) -> delta.recordConditionEvaluation(source,
+						conditionAndOutcome.getCondition(), conditionAndOutcome.getOutcome()));
 			}
-		}
+		});
 		List<String> newExclusions = new ArrayList<>(this.exclusions);
 		newExclusions.removeAll(previousReport.getExclusions());
 		delta.recordExclusions(newExclusions);
@@ -231,6 +237,15 @@ public final class ConditionEvaluationReport {
 				}
 			}
 			return true;
+		}
+
+		/**
+		 * Return a {@link Stream} of the {@link ConditionAndOutcome} items.
+		 * @return a stream of the {@link ConditionAndOutcome} items.
+		 * @since 3.5.0
+		 */
+		public Stream<ConditionAndOutcome> stream() {
+			return StreamSupport.stream(spliterator(), false);
 		}
 
 		@Override
@@ -271,8 +286,7 @@ public final class ConditionEvaluationReport {
 				return false;
 			}
 			ConditionAndOutcome other = (ConditionAndOutcome) obj;
-			return (ObjectUtils.nullSafeEquals(this.condition.getClass(),
-					other.condition.getClass())
+			return (ObjectUtils.nullSafeEquals(this.condition.getClass(), other.condition.getClass())
 					&& ObjectUtils.nullSafeEquals(this.outcome, other.outcome));
 		}
 
@@ -288,7 +302,7 @@ public final class ConditionEvaluationReport {
 
 	}
 
-	private static class AncestorsMatchedCondition implements Condition {
+	private static final class AncestorsMatchedCondition implements Condition {
 
 		@Override
 		public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {

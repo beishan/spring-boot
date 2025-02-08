@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -45,20 +45,18 @@ public class PropertySourcesPlaceholdersResolver implements PlaceholdersResolver
 		this(sources, null);
 	}
 
-	public PropertySourcesPlaceholdersResolver(Iterable<PropertySource<?>> sources,
-			PropertyPlaceholderHelper helper) {
+	public PropertySourcesPlaceholdersResolver(Iterable<PropertySource<?>> sources, PropertyPlaceholderHelper helper) {
 		this.sources = sources;
-		this.helper = (helper != null ? helper
+		this.helper = (helper != null) ? helper
 				: new PropertyPlaceholderHelper(SystemPropertyUtils.PLACEHOLDER_PREFIX,
-						SystemPropertyUtils.PLACEHOLDER_SUFFIX,
-						SystemPropertyUtils.VALUE_SEPARATOR, false));
+						SystemPropertyUtils.PLACEHOLDER_SUFFIX, SystemPropertyUtils.VALUE_SEPARATOR,
+						SystemPropertyUtils.ESCAPE_CHARACTER, true);
 	}
 
 	@Override
 	public Object resolvePlaceholders(Object value) {
-		if (value != null && value instanceof String) {
-			return this.helper.replacePlaceholders((String) value,
-					this::resolvePlaceholder);
+		if (value instanceof String string) {
+			return this.helper.replacePlaceholders(string, this::resolvePlaceholder);
 		}
 		return value;
 	}
@@ -76,9 +74,9 @@ public class PropertySourcesPlaceholdersResolver implements PlaceholdersResolver
 	}
 
 	private static PropertySources getSources(Environment environment) {
-		Assert.notNull(environment, "Environment must not be null");
+		Assert.notNull(environment, "'environment' must not be null");
 		Assert.isInstanceOf(ConfigurableEnvironment.class, environment,
-				"Environment must be a ConfigurableEnvironment");
+				"'environment' must be a ConfigurableEnvironment");
 		return ((ConfigurableEnvironment) environment).getPropertySources();
 	}
 

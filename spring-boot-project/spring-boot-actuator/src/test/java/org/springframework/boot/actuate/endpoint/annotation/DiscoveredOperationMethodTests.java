@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,48 +17,69 @@
 package org.springframework.boot.actuate.endpoint.annotation;
 
 import java.lang.reflect.Method;
+import java.util.Locale;
 
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.ExpectedException;
+import org.junit.jupiter.api.Test;
 
 import org.springframework.boot.actuate.endpoint.OperationType;
+import org.springframework.boot.actuate.endpoint.Producible;
 import org.springframework.core.annotation.AnnotationAttributes;
+import org.springframework.util.MimeType;
 import org.springframework.util.ReflectionUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 /**
  * Tests for {@link DiscoveredOperationMethod}.
  *
  * @author Phillip Webb
  */
-public class DiscoveredOperationMethodTests {
-
-	@Rule
-	public ExpectedException thrown = ExpectedException.none();
+class DiscoveredOperationMethodTests {
 
 	@Test
-	public void createWhenAnnotationAttributesIsNullShouldThrowException() {
-		this.thrown.expect(IllegalArgumentException.class);
-		this.thrown.expectMessage("AnnotationAttributes must not be null");
+	void createWhenAnnotationAttributesIsNullShouldThrowException() {
 		Method method = ReflectionUtils.findMethod(getClass(), "example");
-		new DiscoveredOperationMethod(method, OperationType.READ, null);
+		assertThatIllegalArgumentException()
+			.isThrownBy(() -> new DiscoveredOperationMethod(method, OperationType.READ, null))
+			.withMessageContaining("'annotationAttributes' must not be null");
 	}
 
 	@Test
-	public void getProducesMediaTypesShouldReturnMediaTypes() {
+	void getProducesMediaTypesShouldReturnMediaTypes() {
 		Method method = ReflectionUtils.findMethod(getClass(), "example");
 		AnnotationAttributes annotationAttributes = new AnnotationAttributes();
 		String[] produces = new String[] { "application/json" };
 		annotationAttributes.put("produces", produces);
-		DiscoveredOperationMethod discovered = new DiscoveredOperationMethod(method,
-				OperationType.READ, annotationAttributes);
-		assertThat(discovered.getProducesMediaTypes())
-				.containsExactly("application/json");
+		annotationAttributes.put("producesFrom", Producible.class);
+		DiscoveredOperationMethod discovered = new DiscoveredOperationMethod(method, OperationType.READ,
+				annotationAttributes);
+		assertThat(discovered.getProducesMediaTypes()).containsExactly("application/json");
 	}
 
-	public void example() {
+	@Test
+	void getProducesMediaTypesWhenProducesFromShouldReturnMediaTypes() {
+		Method method = ReflectionUtils.findMethod(getClass(), "example");
+		AnnotationAttributes annotationAttributes = new AnnotationAttributes();
+		annotationAttributes.put("produces", new String[0]);
+		annotationAttributes.put("producesFrom", ExampleProducible.class);
+		DiscoveredOperationMethod discovered = new DiscoveredOperationMethod(method, OperationType.READ,
+				annotationAttributes);
+		assertThat(discovered.getProducesMediaTypes()).containsExactly("one/*", "two/*", "three/*");
+	}
+
+	void example() {
+	}
+
+	enum ExampleProducible implements Producible<ExampleProducible> {
+
+		ONE, TWO, THREE;
+
+		@Override
+		public MimeType getProducedMimeType() {
+			return new MimeType(toString().toLowerCase(Locale.ROOT));
+		}
+
 	}
 
 }

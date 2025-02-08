@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -38,7 +38,7 @@ public class Link {
 	 * @param href the href
 	 */
 	public Link(String href) {
-		Assert.notNull(href, "HREF must not be null");
+		Assert.notNull(href, "'href' must not be null");
 		this.href = href;
 		this.templated = href.contains("{");
 	}
@@ -52,7 +52,7 @@ public class Link {
 	}
 
 	/**
-	 * Returns whether or not the {@link #getHref() href} is templated.
+	 * Returns whether the {@link #getHref() href} is templated.
 	 * @return {@code true} if the href is templated, otherwise {@code false}
 	 */
 	public boolean isTemplated() {

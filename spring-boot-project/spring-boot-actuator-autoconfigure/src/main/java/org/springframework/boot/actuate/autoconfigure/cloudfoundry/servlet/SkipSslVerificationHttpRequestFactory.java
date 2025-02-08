@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2017 the original author or authors.
+ * Copyright 2012-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -39,10 +39,9 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 class SkipSslVerificationHttpRequestFactory extends SimpleClientHttpRequestFactory {
 
 	@Override
-	protected void prepareConnection(HttpURLConnection connection, String httpMethod)
-			throws IOException {
-		if (connection instanceof HttpsURLConnection) {
-			prepareHttpsConnection((HttpsURLConnection) connection);
+	protected void prepareConnection(HttpURLConnection connection, String httpMethod) throws IOException {
+		if (connection instanceof HttpsURLConnection httpsURLConnection) {
+			prepareHttpsConnection(httpsURLConnection);
 		}
 		super.prepareConnection(connection, httpMethod);
 	}
@@ -59,12 +58,11 @@ class SkipSslVerificationHttpRequestFactory extends SimpleClientHttpRequestFacto
 
 	private SSLSocketFactory createSslSocketFactory() throws Exception {
 		SSLContext context = SSLContext.getInstance("TLS");
-		context.init(null, new TrustManager[] { new SkipX509TrustManager() },
-				new SecureRandom());
+		context.init(null, new TrustManager[] { new SkipX509TrustManager() }, new SecureRandom());
 		return context.getSocketFactory();
 	}
 
-	private class SkipHostnameVerifier implements HostnameVerifier {
+	private static final class SkipHostnameVerifier implements HostnameVerifier {
 
 		@Override
 		public boolean verify(String s, SSLSession sslSession) {
@@ -73,7 +71,7 @@ class SkipSslVerificationHttpRequestFactory extends SimpleClientHttpRequestFacto
 
 	}
 
-	private static class SkipX509TrustManager implements X509TrustManager {
+	private static final class SkipX509TrustManager implements X509TrustManager {
 
 		@Override
 		public X509Certificate[] getAcceptedIssuers() {

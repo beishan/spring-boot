@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2022 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,48 +16,37 @@
 
 package org.springframework.boot.actuate.autoconfigure.metrics;
 
-import ch.qos.logback.classic.LoggerContext;
+import java.util.List;
+
 import io.micrometer.core.annotation.Timed;
 import io.micrometer.core.instrument.Clock;
-import io.micrometer.core.instrument.binder.jvm.ClassLoaderMetrics;
-import io.micrometer.core.instrument.binder.jvm.JvmGcMetrics;
-import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics;
-import io.micrometer.core.instrument.binder.jvm.JvmThreadMetrics;
-import io.micrometer.core.instrument.binder.logging.LogbackMetrics;
-import io.micrometer.core.instrument.binder.system.FileDescriptorMetrics;
-import io.micrometer.core.instrument.binder.system.ProcessorMetrics;
-import io.micrometer.core.instrument.binder.system.UptimeMetrics;
-import org.slf4j.ILoggerFactory;
-import org.slf4j.LoggerFactory;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.binder.MeterBinder;
+import io.micrometer.core.instrument.config.MeterFilter;
 
-import org.springframework.boot.autoconfigure.AutoConfigureBefore;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionMessage;
-import org.springframework.boot.autoconfigure.condition.ConditionOutcome;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.autoconfigure.condition.SpringBootCondition;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ConditionContext;
-import org.springframework.context.annotation.Conditional;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.core.annotation.Order;
-import org.springframework.core.type.AnnotatedTypeMetadata;
 
 /**
  * {@link EnableAutoConfiguration Auto-configuration} for Micrometer-based metrics.
  *
  * @author Jon Schneider
  * @author Stephane Nicoll
+ * @author Moritz Halbritter
  * @since 2.0.0
  */
-@Configuration
+@AutoConfiguration(before = CompositeMeterRegistryAutoConfiguration.class)
 @ConditionalOnClass(Timed.class)
 @EnableConfigurationProperties(MetricsProperties.class)
-@AutoConfigureBefore(CompositeMeterRegistryAutoConfiguration.class)
 public class MetricsAutoConfiguration {
 
 	@Bean
@@ -67,9 +56,12 @@ public class MetricsAutoConfiguration {
 	}
 
 	@Bean
-	public static MeterRegistryPostProcessor meterRegistryPostProcessor(
-			ApplicationContext context) {
-		return new MeterRegistryPostProcessor(context);
+	public static MeterRegistryPostProcessor meterRegistryPostProcessor(ApplicationContext applicationContext,
+			ObjectProvider<MetricsProperties> metricsProperties,
+			ObjectProvider<MeterRegistryCustomizer<?>> meterRegistryCustomizers,
+			ObjectProvider<MeterFilter> meterFilters, ObjectProvider<MeterBinder> meterBinders) {
+		return new MeterRegistryPostProcessor(applicationContext, metricsProperties, meterRegistryCustomizers,
+				meterFilters, meterBinders);
 	}
 
 	@Bean
@@ -78,87 +70,30 @@ public class MetricsAutoConfiguration {
 		return new PropertiesMeterFilter(properties);
 	}
 
-	@Configuration
-	@ConditionalOnProperty(value = "management.metrics.binders.jvm.enabled", matchIfMissing = true)
-	static class JvmMeterBindersConfiguration {
-
-		@Bean
-		@ConditionalOnMissingBean
-		public JvmGcMetrics jvmGcMetrics() {
-			return new JvmGcMetrics();
-		}
-
-		@Bean
-		@ConditionalOnMissingBean
-		public JvmMemoryMetrics jvmMemoryMetrics() {
-			return new JvmMemoryMetrics();
-		}
-
-		@Bean
-		@ConditionalOnMissingBean
-		public JvmThreadMetrics jvmThreadMetrics() {
-			return new JvmThreadMetrics();
-		}
-
-		@Bean
-		@ConditionalOnMissingBean
-		public ClassLoaderMetrics classLoaderMetrics() {
-			return new ClassLoaderMetrics();
-		}
-
+	@Bean
+	MeterRegistryCloser meterRegistryCloser(ObjectProvider<MeterRegistry> meterRegistries) {
+		return new MeterRegistryCloser(meterRegistries.orderedStream().toList());
 	}
 
-	@Configuration
-	static class MeterBindersConfiguration {
+	/**
+	 * Ensures that {@link MeterRegistry meter registries} are closed early in the
+	 * shutdown process.
+	 */
+	static class MeterRegistryCloser implements ApplicationListener<ContextClosedEvent> {
 
-		@Bean
-		@ConditionalOnClass(name = { "ch.qos.logback.classic.LoggerContext",
-				"org.slf4j.LoggerFactory" })
-		@Conditional(LogbackLoggingCondition.class)
-		@ConditionalOnMissingBean(LogbackMetrics.class)
-		@ConditionalOnProperty(value = "management.metrics.binders.logback.enabled", matchIfMissing = true)
-		public LogbackMetrics logbackMetrics() {
-			return new LogbackMetrics();
+		private final List<MeterRegistry> meterRegistries;
+
+		MeterRegistryCloser(List<MeterRegistry> meterRegistries) {
+			this.meterRegistries = meterRegistries;
 		}
-
-		@Bean
-		@ConditionalOnProperty(value = "management.metrics.binders.uptime.enabled", matchIfMissing = true)
-		@ConditionalOnMissingBean
-		public UptimeMetrics uptimeMetrics() {
-			return new UptimeMetrics();
-		}
-
-		@Bean
-		@ConditionalOnProperty(value = "management.metrics.binders.processor.enabled", matchIfMissing = true)
-		@ConditionalOnMissingBean
-		public ProcessorMetrics processorMetrics() {
-			return new ProcessorMetrics();
-		}
-
-		@Bean
-		@ConditionalOnProperty(name = "management.metrics.binders.files.enabled", matchIfMissing = true)
-		@ConditionalOnMissingBean
-		public FileDescriptorMetrics fileDescriptorMetrics() {
-			return new FileDescriptorMetrics();
-		}
-
-	}
-
-	static class LogbackLoggingCondition extends SpringBootCondition {
 
 		@Override
-		public ConditionOutcome getMatchOutcome(ConditionContext context,
-				AnnotatedTypeMetadata metadata) {
-			ILoggerFactory loggerFactory = LoggerFactory.getILoggerFactory();
-			ConditionMessage.Builder message = ConditionMessage
-					.forCondition("LogbackLoggingCondition");
-			if (loggerFactory instanceof LoggerContext) {
-				return ConditionOutcome.match(
-						message.because("ILoggerFactory is a Logback LoggerContext"));
+		public void onApplicationEvent(ContextClosedEvent event) {
+			for (MeterRegistry meterRegistry : this.meterRegistries) {
+				if (!meterRegistry.isClosed()) {
+					meterRegistry.close();
+				}
 			}
-			return ConditionOutcome
-					.noMatch(message.because("ILoggerFactory is an instance of "
-							+ loggerFactory.getClass().getCanonicalName()));
 		}
 
 	}

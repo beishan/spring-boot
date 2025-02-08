@@ -1,11 +1,11 @@
 /*
- * Copyright 2012-2018 the original author or authors.
+ * Copyright 2012-2025 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +18,7 @@ package org.springframework.boot.context.properties;
 
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -25,6 +26,7 @@ import java.util.function.Supplier;
 
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
+import org.springframework.util.function.SingletonSupplier;
 
 /**
  * Utility that can be used to map values from a supplied source to a destination.
@@ -50,6 +52,8 @@ import org.springframework.util.StringUtils;
  * {@link Source#toInstance(Function) new instance}.
  *
  * @author Phillip Webb
+ * @author Artsiom Yudovin
+ * @author Chris Bono
  * @since 2.0.0
  */
 public final class PropertyMapper {
@@ -87,7 +91,7 @@ public final class PropertyMapper {
 	 * @return a new property mapper instance
 	 */
 	public PropertyMapper alwaysApplying(SourceOperator operator) {
-		Assert.notNull(operator, "Operator must not be null");
+		Assert.notNull(operator, "'operator' must not be null");
 		return new PropertyMapper(this, operator);
 	}
 
@@ -97,9 +101,10 @@ public final class PropertyMapper {
 	 * @param <T> the source type
 	 * @param supplier the value supplier
 	 * @return a {@link Source} that can be used to complete the mapping
+	 * @see #from(Object)
 	 */
 	public <T> Source<T> from(Supplier<T> supplier) {
-		Assert.notNull(supplier, "Supplier must not be null");
+		Assert.notNull(supplier, "'supplier' must not be null");
 		Source<T> source = getSource(supplier);
 		if (this.sourceOperator != null) {
 			source = this.sourceOperator.apply(source);
@@ -107,12 +112,23 @@ public final class PropertyMapper {
 		return source;
 	}
 
+	/**
+	 * Return a new {@link Source} from the specified value that can be used to perform
+	 * the mapping.
+	 * @param <T> the source type
+	 * @param value the value
+	 * @return a {@link Source} that can be used to complete the mapping
+	 */
+	public <T> Source<T> from(T value) {
+		return from(() -> value);
+	}
+
 	@SuppressWarnings("unchecked")
 	private <T> Source<T> getSource(Supplier<T> supplier) {
 		if (this.parent != null) {
 			return this.parent.from(supplier);
 		}
-		return new Source<>(new CachingSupplier<>(supplier), (Predicate<T>) ALWAYS);
+		return new Source<>(SingletonSupplier.of(supplier), (Predicate<T>) ALWAYS);
 	}
 
 	/**
@@ -121,32 +137,6 @@ public final class PropertyMapper {
 	 */
 	public static PropertyMapper get() {
 		return INSTANCE;
-	}
-
-	/**
-	 * Supplier that caches the value to prevent multiple calls.
-	 */
-	private static class CachingSupplier<T> implements Supplier<T> {
-
-		private final Supplier<T> supplier;
-
-		private boolean hasResult;
-
-		private T result;
-
-		CachingSupplier(Supplier<T> supplier) {
-			this.supplier = supplier;
-		}
-
-		@Override
-		public T get() {
-			if (!this.hasResult) {
-				this.result = this.supplier.get();
-				this.hasResult = true;
-			}
-			return this.result;
-		}
-
 	}
 
 	/**
@@ -167,6 +157,7 @@ public final class PropertyMapper {
 
 	/**
 	 * A source that is in the process of being mapped.
+	 *
 	 * @param <T> the source type
 	 */
 	public static final class Source<T> {
@@ -176,7 +167,7 @@ public final class PropertyMapper {
 		private final Predicate<T> predicate;
 
 		private Source(Supplier<T> supplier, Predicate<T> predicate) {
-			Assert.notNull(predicate, "Predicate must not be null");
+			Assert.notNull(predicate, "'predicate' must not be null");
 			this.supplier = supplier;
 			this.predicate = predicate;
 		}
@@ -192,13 +183,14 @@ public final class PropertyMapper {
 		}
 
 		/**
-		 * Return an adapted version of the source changed via the given adapter function.
+		 * Return an adapted version of the source changed through the given adapter
+		 * function.
 		 * @param <R> the resulting type
 		 * @param adapter the adapter to apply
 		 * @return a new adapted source instance
 		 */
 		public <R> Source<R> as(Function<T, R> adapter) {
-			Assert.notNull(adapter, "Adapter must not be null");
+			Assert.notNull(adapter, "'adapter' must not be null");
 			Supplier<Boolean> test = () -> this.predicate.test(this.supplier.get());
 			Predicate<R> predicate = (t) -> test.get();
 			Supplier<R> supplier = () -> {
@@ -216,8 +208,7 @@ public final class PropertyMapper {
 		 * @return a new filtered source instance
 		 */
 		public Source<T> whenNonNull() {
-			return new Source<>(new NullPointerExceptionSafeSupplier<>(this.supplier),
-					Objects::nonNull);
+			return new Source<>(new NullPointerExceptionSafeSupplier<>(this.supplier), Objects::nonNull);
 		}
 
 		/**
@@ -275,8 +266,8 @@ public final class PropertyMapper {
 		 * @return a new filtered source instance
 		 */
 		public Source<T> whenNot(Predicate<T> predicate) {
-			Assert.notNull(predicate, "Predicate must not be null");
-			return new Source<>(this.supplier, predicate.negate());
+			Assert.notNull(predicate, "'predicate' must not be null");
+			return when(predicate.negate());
 		}
 
 		/**
@@ -286,22 +277,40 @@ public final class PropertyMapper {
 		 * @return a new filtered source instance
 		 */
 		public Source<T> when(Predicate<T> predicate) {
-			Assert.notNull(predicate, "Predicate must not be null");
-			return new Source<>(this.supplier, predicate);
+			Assert.notNull(predicate, "'predicate' must not be null");
+			return new Source<>(this.supplier, (this.predicate != null) ? this.predicate.and(predicate) : predicate);
 		}
 
 		/**
 		 * Complete the mapping by passing any non-filtered value to the specified
-		 * consumer.
+		 * consumer. The method is designed to be used with mutable objects.
 		 * @param consumer the consumer that should accept the value if it's not been
 		 * filtered
 		 */
 		public void to(Consumer<T> consumer) {
-			Assert.notNull(consumer, "Consumer must not be null");
+			Assert.notNull(consumer, "'consumer' must not be null");
 			T value = this.supplier.get();
 			if (this.predicate.test(value)) {
 				consumer.accept(value);
 			}
+		}
+
+		/**
+		 * Complete the mapping for any non-filtered value by applying the given function
+		 * to an existing instance and returning a new one. For filtered values, the
+		 * {@code instance} parameter is returned unchanged. The method is designed to be
+		 * used with immutable objects.
+		 * @param <R> the result type
+		 * @param instance the current instance
+		 * @param mapper the mapping function
+		 * @return a new mapped instance or the original instance
+		 * @since 3.0.0
+		 */
+		public <R> R to(R instance, BiFunction<R, T, R> mapper) {
+			Assert.notNull(instance, "'instance' must not be null");
+			Assert.notNull(mapper, "'mapper' must not be null");
+			T value = this.supplier.get();
+			return (!this.predicate.test(value)) ? instance : mapper.apply(instance, value);
 		}
 
 		/**
@@ -312,7 +321,7 @@ public final class PropertyMapper {
 		 * @throws NoSuchElementException if the value has been filtered
 		 */
 		public <R> R toInstance(Function<T, R> factory) {
-			Assert.notNull(factory, "Factory must not be null");
+			Assert.notNull(factory, "'factory' must not be null");
 			T value = this.supplier.get();
 			if (!this.predicate.test(value)) {
 				throw new NoSuchElementException("No value present");
@@ -326,7 +335,7 @@ public final class PropertyMapper {
 		 * @param runnable the method to call if the value has not been filtered
 		 */
 		public void toCall(Runnable runnable) {
-			Assert.notNull(runnable, "Runnable must not be null");
+			Assert.notNull(runnable, "'runnable' must not be null");
 			T value = this.supplier.get();
 			if (this.predicate.test(value)) {
 				runnable.run();
